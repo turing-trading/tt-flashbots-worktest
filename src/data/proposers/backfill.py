@@ -1,5 +1,6 @@
-"""Backfill miner balance data using Ethereum JSON-RPC."""
+"""Backfill proposer balance data using Ethereum JSON-RPC."""
 
+import asyncio
 import os
 from asyncio import run
 
@@ -14,27 +15,29 @@ from rich.progress import (
     TaskID,
     TextColumn,
     TimeElapsedColumn,
+    TimeRemainingColumn,
 )
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.data.miners.db import MinerBalanceDB
-from src.data.miners.models import MinerBalance
+from src.data.proposers.db import ProposerBalancesDB
+from src.data.proposers.models import ProposerBalance
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
 
 load_dotenv()
 
 
-class BackfillMinerBalances:
-    """Backfill miner balance increases by querying Ethereum node."""
+class BackfillProposerBalancesDelivered:
+    """Backfill proposer balance increases by querying Ethereum node."""
 
     def __init__(
         self,
         eth_rpc_url: str | None = None,
         batch_size: int = 10,
         db_batch_size: int = 100,
+        parallel_batches: int = 5,
     ):
         """Initialize backfill.
 
@@ -42,6 +45,7 @@ class BackfillMinerBalances:
             eth_rpc_url: Ethereum JSON-RPC endpoint (defaults to env var ETH_RPC_URL)
             batch_size: Number of getBalance calls per JSON-RPC batch request
             db_batch_size: Number of records to insert per database batch
+            parallel_batches: Number of batch RPC requests to run in parallel
         """
         self.eth_rpc_url = eth_rpc_url or os.getenv("ETH_RPC_URL")
         if not self.eth_rpc_url:
@@ -51,26 +55,45 @@ class BackfillMinerBalances:
 
         self.batch_size = batch_size
         self.db_batch_size = db_batch_size
-        self.logger = get_logger("backfill_miner_balances", log_level="INFO")
+        self.parallel_batches = parallel_batches
+        self.logger = get_logger("backfill_proposer_balances", log_level="INFO")
         self.console = Console()
+
+    async def _get_missing_blocks_count(self, session: AsyncSession) -> int:
+        """Get total count of missing blocks.
+
+        Returns:
+            Total number of blocks missing from proposers_balance table
+        """
+        query_str = """
+        SELECT COUNT(*)
+        FROM blocks b
+        LEFT JOIN proposers_balance mb ON b.number = mb.block_number
+        WHERE mb.block_number IS NULL
+        AND b.number > 0
+        """
+
+        result = await session.execute(text(query_str))
+        count = result.scalar()
+        return count or 0
 
     async def _get_missing_block_numbers(
         self, session: AsyncSession, limit: int | None = None
     ) -> list[tuple[int, str]]:
-        """Get block numbers that exist in blocks but not in miners_balance.
+        """Get block numbers that exist in blocks but not in proposers_balance.
 
         Args:
             limit: Max blocks to fetch (capped at 10,000 to minimize DB impact)
 
         Returns:
-            List of (block_number, miner) tuples
+            List of (block_number, proposer) tuples
         """
-        # Query blocks that don't have corresponding miner balance records
+        # Query blocks that don't have corresponding proposer balance records
         # Order by DESC to process most recent blocks first
         query_str = """
         SELECT b.number, b.miner
         FROM blocks b
-        LEFT JOIN miners_balance mb ON b.number = mb.block_number
+        LEFT JOIN proposers_balance mb ON b.number = mb.block_number
         WHERE mb.block_number IS NULL
         AND b.number > 0
         ORDER BY b.number DESC
@@ -80,12 +103,12 @@ class BackfillMinerBalances:
         actual_limit = min(limit, 10_000) if limit else 10_000
         query_str += f" LIMIT {actual_limit}"
 
-        self.logger.info(
+        self.logger.debug(
             f"Executing query to find missing blocks (limit: {actual_limit:,})..."
         )
         result = await session.execute(text(query_str))
         rows = result.fetchall()
-        self.logger.info(f"Query returned {len(rows)} missing blocks")
+        self.logger.debug(f"Query returned {len(rows)} missing blocks")
         return [(row[0], row[1]) for row in rows]
 
     async def _batch_get_balances(
@@ -165,7 +188,7 @@ class BackfillMinerBalances:
         progress: Progress,
         task_id: TaskID,
     ) -> int:
-        """Process a batch of blocks to calculate miner balance increases.
+        """Process a batch of blocks to calculate proposer balance increases.
 
         Args:
             client: HTTP client
@@ -183,59 +206,74 @@ class BackfillMinerBalances:
         # Build requests for all balances we need
         # For each block N, we need balance at N-1 and N
         balance_requests = []
-        for block_number, miner in blocks:
-            balance_requests.append((miner, block_number - 1))  # Balance before
-            balance_requests.append((miner, block_number))  # Balance after
+        for block_number, proposer in blocks:
+            balance_requests.append((proposer, block_number - 1))  # Balance before
+            balance_requests.append((proposer, block_number))  # Balance after
 
-        # Process balance requests in batches
+        # Process balance requests in parallel batches
         all_balances = {}
-        for i in range(0, len(balance_requests), self.batch_size):
-            batch = balance_requests[i : i + self.batch_size]
-            balances = await self._batch_get_balances(client, batch)
-            all_balances.update(balances)
 
-        # Create MinerBalance records
-        miner_balances = []
-        for block_number, miner in blocks:
-            balance_before = all_balances.get((miner, block_number - 1), 0)
-            balance_after = all_balances.get((miner, block_number), 0)
+        # Split into batches
+        batches = [
+            balance_requests[i : i + self.batch_size]
+            for i in range(0, len(balance_requests), self.batch_size)
+        ]
+
+        # Process batches in parallel chunks
+        for i in range(0, len(batches), self.parallel_batches):
+            parallel_chunk = batches[i : i + self.parallel_batches]
+
+            # Execute multiple batch requests in parallel
+            results = await asyncio.gather(
+                *[self._batch_get_balances(client, batch) for batch in parallel_chunk]
+            )
+
+            # Merge results
+            for balances in results:
+                all_balances.update(balances)
+
+        # Create ProposerBalance records
+        proposer_balances = []
+        for block_number, proposer in blocks:
+            balance_before = all_balances.get((proposer, block_number - 1), 0)
+            balance_after = all_balances.get((proposer, block_number), 0)
             balance_increase = balance_after - balance_before
 
-            miner_balance = MinerBalance(
+            proposer_balance = ProposerBalance(
                 block_number=block_number,
-                miner=miner,
+                miner=proposer,
                 balance_before=balance_before,
                 balance_after=balance_after,
                 balance_increase=balance_increase,
             )
-            miner_balances.append(miner_balance)
+            proposer_balances.append(proposer_balance)
 
         # Store in database
-        await self._store_miner_balances(session, miner_balances)
+        await self._store_proposer_balances(session, proposer_balances)
 
         # Update progress
         progress.update(task_id, advance=len(blocks))
 
         return len(blocks)
 
-    async def _store_miner_balances(
-        self, session: AsyncSession, balances: list[MinerBalance]
+    async def _store_proposer_balances(
+        self, session: AsyncSession, balances: list[ProposerBalance]
     ) -> None:
-        """Store miner balances in the database."""
+        """Store proposer balances in the database."""
         if not balances:
             return
 
         values = [balance.model_dump() for balance in balances]
 
         # Upsert using ON CONFLICT
-        stmt = pg_insert(MinerBalanceDB).values(values)
+        stmt = pg_insert(ProposerBalancesDB).values(values)
         stmt = stmt.on_conflict_do_update(
             index_elements=["block_number"],
             set_={
-                MinerBalanceDB.miner: stmt.excluded.miner,
-                MinerBalanceDB.balance_before: stmt.excluded.balance_before,
-                MinerBalanceDB.balance_after: stmt.excluded.balance_after,
-                MinerBalanceDB.balance_increase: stmt.excluded.balance_increase,
+                ProposerBalancesDB.miner: stmt.excluded.miner,
+                ProposerBalancesDB.balance_before: stmt.excluded.balance_before,
+                ProposerBalancesDB.balance_after: stmt.excluded.balance_after,
+                ProposerBalancesDB.balance_increase: stmt.excluded.balance_increase,
             },
         )
 
@@ -260,57 +298,68 @@ class BackfillMinerBalances:
         self.console.print("[cyan]Creating tables if not exist...[/cyan]")
         await self.create_tables()
 
-        self.console.print("[bold blue]Backfilling miner balance increases[/bold blue]")
+        self.console.print(
+            "[bold blue]Backfilling proposer balance increases[/bold blue]"
+        )
         self.console.print(f"[cyan]Ethereum RPC: {self.eth_rpc_url}[/cyan]")
         self.console.print(
             f"[cyan]Batch size: {self.batch_size} balances/request[/cyan]"
         )
+        self.console.print(
+            f"[cyan]Parallel batches: {self.parallel_batches} concurrent requests[/cyan]"
+        )
         self.console.print(f"[cyan]DB batch size: {self.db_batch_size} records[/cyan]")
         self.console.print("[cyan]Query limit: 10,000 blocks per iteration[/cyan]\n")
 
-        total_processed_all = 0
+        # Query total missing blocks upfront
+        self.console.print("[cyan]Querying total missing blocks...[/cyan]")
+        async with AsyncSessionLocal() as session:
+            total_missing = await self._get_missing_blocks_count(session)
+
+        if total_missing == 0:
+            self.console.print(
+                "[yellow]No missing blocks - backfill complete![/yellow]"
+            )
+            return
+
+        self.console.print(
+            f"[green]Found {total_missing:,} total missing blocks[/green]\n"
+        )
+
+        # Create overall progress display
+        overall_progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TextColumn("•"),
+            TimeElapsedColumn(),
+            TextColumn("•"),
+            TimeRemainingColumn(),
+            console=self.console,
+            expand=True,
+        )
+
+        total_processed = 0
         iteration = 0
 
-        # Keep processing until no more missing blocks
-        while True:
-            iteration += 1
-            self.console.print(
-                f"[cyan]Iteration {iteration}: Querying for missing blocks...[/cyan]"
+        with overall_progress:
+            overall_task = overall_progress.add_task(
+                "Overall Progress", total=total_missing
             )
 
-            async with AsyncSessionLocal() as session:
-                # Get next batch of missing blocks (max 10K)
-                missing_blocks = await self._get_missing_block_numbers(session, limit)
+            # Keep processing until no more missing blocks
+            while True:
+                iteration += 1
 
-            if not missing_blocks:
-                self.console.print(
-                    "[yellow]No more missing blocks - backfill complete![/yellow]"
-                )
-                break
+                async with AsyncSessionLocal() as session:
+                    # Get next batch of missing blocks (max 10K)
+                    missing_blocks = await self._get_missing_block_numbers(
+                        session, limit
+                    )
 
-            total_blocks = len(missing_blocks)
-            self.console.print(
-                f"[green]Found {total_blocks:,} missing blocks in this iteration[/green]"
-            )
-
-            # Create progress display
-            progress = Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                MofNCompleteColumn(),
-                TextColumn("•"),
-                TimeElapsedColumn(),
-                console=self.console,
-                expand=True,
-            )
-
-            iteration_processed = 0
-
-            with progress:
-                task_id = progress.add_task(
-                    f"Iteration {iteration}", total=total_blocks
-                )
+                if not missing_blocks:
+                    break
 
                 async with httpx.AsyncClient() as client:
                     async with AsyncSessionLocal() as session:
@@ -319,26 +368,21 @@ class BackfillMinerBalances:
                             batch = missing_blocks[i : i + self.db_batch_size]
 
                             processed = await self._process_blocks_batch(
-                                client, session, batch, progress, task_id
+                                client, session, batch, overall_progress, overall_task
                             )
-                            iteration_processed += processed
-
-            total_processed_all += iteration_processed
-            self.console.print(
-                f"[green]✓ Iteration {iteration} completed - "
-                f"Processed {iteration_processed:,} blocks[/green]\n"
-            )
+                            total_processed += processed
 
         self.console.print(
             f"\n[bold green]✓ Backfill completed[/bold green] - "
-            f"Processed {total_processed_all:,} total blocks across {iteration} iterations"
+            f"Processed {total_processed:,} blocks across {iteration} iterations"
         )
 
 
 if __name__ == "__main__":
     # Example: Backfill all missing blocks
-    backfill = BackfillMinerBalances(
+    backfill = BackfillProposerBalancesDelivered(
         batch_size=10,  # 10 balance queries per JSON-RPC batch
         db_batch_size=100,  # 100 records per DB insert
+        parallel_batches=100,  # 100 batch requests in parallel
     )
     run(backfill.run(limit=None))  # Process all missing blocks

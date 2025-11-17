@@ -6,7 +6,7 @@ RELAYS = [
     "relay-analytics.ultrasound.money",  # Redirect from relay.ultrasound.money
     "bloxroute.max-profit.blxrbdn.com",
     "bloxroute.regulated.blxrbdn.com",
-    # "titanrelay.xyz",
+    "titanrelay.xyz",
     "agnostic-relay.net",
     "aestus.live",
     "boost-relay.flashbots.net",

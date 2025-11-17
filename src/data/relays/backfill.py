@@ -18,18 +18,18 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.data.relay.constants import (
+from src.data.relays.constants import (
     BEACON_ENDPOINT,
     ENDPOINTS,
     LIMITS,
     RELAY_LIMITS,
     RELAYS,
 )
-from src.data.relay.db import (
-    SignedValidatorRegistrationCheckpoints,
-    SignedValidatorRegistrationDB,
+from src.data.relays.db import (
+    RelaysPayloadsCheckpoints,
+    RelaysPayloadsDB,
 )
-from src.data.relay.models import SignedValidatorRegistration
+from src.data.relays.models import RelaysPayloads
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
 
@@ -66,7 +66,7 @@ class BackfillProposerPayloadDelivered:
         client: httpx.AsyncClient,
         relay: str,
         cursor: int,
-    ) -> list[SignedValidatorRegistration]:
+    ) -> list[RelaysPayloads]:
         """Fetch data from the relay endpoint with retry logic."""
         url = f"https://{relay}{self.endpoint}"
         limit = self._get_limit_for_relay(relay)
@@ -77,13 +77,21 @@ class BackfillProposerPayloadDelivered:
 
         for attempt in range(max_retries):
             try:
-                response = await client.get(url, params=params, timeout=30.0)
+                response = await client.get(url, params=params, timeout=60.0)
                 response.raise_for_status()
 
-                data = TypeAdapter(list[SignedValidatorRegistration]).validate_json(
-                    response.text
-                )
+                data = TypeAdapter(list[RelaysPayloads]).validate_json(response.text)
                 return list({item.slot: item for item in data}.values())
+
+            except httpx.TimeoutException as e:
+                # Retry on timeout with exponential backoff
+                retry_delay = base_delay * (2**attempt)
+                self.logger.warning(
+                    f"Timeout from {relay}, retrying in {retry_delay}s "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                await sleep(retry_delay)
+                continue
 
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429:  # Rate limit
@@ -107,7 +115,7 @@ class BackfillProposerPayloadDelivered:
                 self.logger.error(f"Error fetching from {relay}: {e}")
                 raise
 
-        # Max retries exceeded for 429 errors
+        # Max retries exceeded
         error_msg = f"Max retries ({max_retries}) exceeded for {relay}"
         self.logger.error(error_msg)
         raise Exception(error_msg)
@@ -116,8 +124,8 @@ class BackfillProposerPayloadDelivered:
         self, session: AsyncSession, relay: str
     ) -> tuple[int, int] | None:
         """Get the latest checkpoint for this relay."""
-        stmt = select(SignedValidatorRegistrationCheckpoints).where(
-            SignedValidatorRegistrationCheckpoints.relay == relay
+        stmt = select(RelaysPayloadsCheckpoints).where(
+            RelaysPayloadsCheckpoints.relay == relay
         )
         result = await session.execute(stmt)
         checkpoint = result.scalar_one_or_none()
@@ -137,8 +145,8 @@ class BackfillProposerPayloadDelivered:
         to_slot: int,
     ) -> None:
         """Update or create checkpoint for this relay."""
-        stmt = select(SignedValidatorRegistrationCheckpoints).where(
-            SignedValidatorRegistrationCheckpoints.relay == relay
+        stmt = select(RelaysPayloadsCheckpoints).where(
+            RelaysPayloadsCheckpoints.relay == relay
         )
         result = await session.execute(stmt)
         checkpoint = result.scalar_one_or_none()
@@ -146,7 +154,7 @@ class BackfillProposerPayloadDelivered:
             checkpoint.from_slot = from_slot  # type: ignore[assignment]
             checkpoint.to_slot = to_slot  # type: ignore[assignment]
         else:
-            checkpoint = SignedValidatorRegistrationCheckpoints(
+            checkpoint = RelaysPayloadsCheckpoints(
                 relay=relay,
                 from_slot=from_slot,
                 to_slot=to_slot,
@@ -157,7 +165,7 @@ class BackfillProposerPayloadDelivered:
     async def _store_registrations(
         self,
         session: AsyncSession,
-        registrations: list[SignedValidatorRegistration],
+        registrations: list[RelaysPayloads],
         relay: str,
     ) -> None:
         """Store validator registrations in the database."""
@@ -168,21 +176,21 @@ class BackfillProposerPayloadDelivered:
         values = [{**reg.model_dump(), "relay": relay} for reg in registrations]
 
         # Upsert registrations into the database using ON CONFLICT
-        stmt = pg_insert(SignedValidatorRegistrationDB).values(values)
+        stmt = pg_insert(RelaysPayloadsDB).values(values)
         excluded = stmt.excluded
         stmt = stmt.on_conflict_do_update(
             index_elements=["slot", "relay"],
             set_={
-                SignedValidatorRegistrationDB.parent_hash: excluded.parent_hash,
-                SignedValidatorRegistrationDB.block_hash: excluded.block_hash,
-                SignedValidatorRegistrationDB.builder_pubkey: excluded.builder_pubkey,
-                SignedValidatorRegistrationDB.proposer_pubkey: excluded.proposer_pubkey,
-                SignedValidatorRegistrationDB.proposer_fee_recipient: excluded.proposer_fee_recipient,
-                SignedValidatorRegistrationDB.gas_limit: excluded.gas_limit,
-                SignedValidatorRegistrationDB.gas_used: excluded.gas_used,
-                SignedValidatorRegistrationDB.value: excluded.value,
-                SignedValidatorRegistrationDB.block_number: excluded.block_number,
-                SignedValidatorRegistrationDB.num_tx: excluded.num_tx,
+                RelaysPayloadsDB.parent_hash: excluded.parent_hash,
+                RelaysPayloadsDB.block_hash: excluded.block_hash,
+                RelaysPayloadsDB.builder_pubkey: excluded.builder_pubkey,
+                RelaysPayloadsDB.proposer_pubkey: excluded.proposer_pubkey,
+                RelaysPayloadsDB.proposer_fee_recipient: excluded.proposer_fee_recipient,
+                RelaysPayloadsDB.gas_limit: excluded.gas_limit,
+                RelaysPayloadsDB.gas_used: excluded.gas_used,
+                RelaysPayloadsDB.value: excluded.value,
+                RelaysPayloadsDB.block_number: excluded.block_number,
+                RelaysPayloadsDB.num_tx: excluded.num_tx,
             },
         )
         await session.execute(stmt)
@@ -290,7 +298,10 @@ class BackfillProposerPayloadDelivered:
             )
             self.tasks[relay] = task_id
 
-            async with httpx.AsyncClient() as client:
+            # Configure client with extended timeouts for slow relays
+            timeout = httpx.Timeout(60.0, connect=10.0)
+            limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
+            async with httpx.AsyncClient(timeout=timeout, limits=limits) as client:
                 relay_limit = self._get_limit_for_relay(relay)
 
                 # Phase 1: Fetch new data (latest_slot -> to_slot)

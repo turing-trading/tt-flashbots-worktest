@@ -3,7 +3,7 @@
 from pydantic import BaseModel
 
 
-class MinerBalance(BaseModel):
+class ProposerBalance(BaseModel):
     """Miner balance increase for a specific block."""
 
     block_number: int

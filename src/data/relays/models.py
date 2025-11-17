@@ -3,14 +3,14 @@
 from pydantic import BaseModel
 
 
-class SignedValidatorRegistrationPayload(BaseModel):
+class RelaysPayloadsPayload(BaseModel):
     """Signed validator registration payload."""
 
     cursor: int
     limit: int
 
 
-class SignedValidatorRegistration(BaseModel):
+class RelaysPayloads(BaseModel):
     """Signed validator registration."""
 
     slot: int

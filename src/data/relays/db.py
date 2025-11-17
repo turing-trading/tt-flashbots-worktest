@@ -5,20 +5,20 @@ from sqlalchemy import BigInteger, Column, Integer, Numeric, String
 from src.helpers.db import Base
 
 
-class SignedValidatorRegistrationCheckpoints(Base):
+class RelaysPayloadsCheckpoints(Base):
     """Signed validator registration checkpoints."""
 
-    __tablename__ = "signed_validator_registrations_checkpoints"
+    __tablename__ = "relays_payloads_checkpoints"
 
     relay = Column(String(255), primary_key=True, index=True)
     from_slot = Column(Integer, primary_key=False)
     to_slot = Column(Integer, primary_key=False)
 
 
-class SignedValidatorRegistrationDB(Base):
+class RelaysPayloadsDB(Base):
     """Signed validator registration database model."""
 
-    __tablename__ = "signed_validator_registrations"
+    __tablename__ = "relays_payloads"
 
     slot = Column(BigInteger, primary_key=True)
     relay = Column(String(255), primary_key=True, index=True)

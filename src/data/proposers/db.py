@@ -5,10 +5,10 @@ from sqlalchemy import BigInteger, Column, Index, Numeric, String
 from src.helpers.db import Base
 
 
-class MinerBalanceDB(Base):
+class ProposerBalancesDB(Base):
     """Miner balance increase per block."""
 
-    __tablename__ = "miners_balance"
+    __tablename__ = "proposers_balance"
 
     block_number = Column(BigInteger, primary_key=True, index=True)
     miner = Column(String(42), nullable=False, index=True)
@@ -16,4 +16,4 @@ class MinerBalanceDB(Base):
     balance_after = Column(Numeric, nullable=False)  # Wei at block N
     balance_increase = Column(Numeric, nullable=False)  # Wei increase (can be negative)
 
-    __table_args__ = (Index("idx_miner_block", "miner", "block_number"),)
+    __table_args__ = (Index("idx_proposer_block", "miner", "block_number"),)

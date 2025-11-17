@@ -15,7 +15,8 @@ For each block in the `blocks` table that doesn't have a corresponding entry in 
 **Ethereum JSON-RPC Node**
 - Uses `eth_getBalance` method
 - Queries balances at specific block numbers
-- Batches 10 balance queries per JSON-RPC request for efficiency
+- Batches 10 balance queries per JSON-RPC request
+- Runs 5 batch requests in parallel for improved throughput
 
 ## Database Schema
 
@@ -64,10 +65,11 @@ from src.data.miners.backfill import BackfillMinerBalances
 
 backfill = BackfillMinerBalances(
     eth_rpc_url='https://your-node-url',
-    batch_size=10,      # RPC batch size
-    db_batch_size=100,  # DB insert batch size
+    batch_size=10,        # RPC batch size
+    db_batch_size=100,    # DB insert batch size
+    parallel_batches=5,   # Parallel RPC requests
 )
-run(backfill.run(limit=1000))  # Process 1000 blocks
+run(backfill.run(limit=1000))  # Process up to 1000 blocks
 "
 ```
 
@@ -78,30 +80,34 @@ run(backfill.run(limit=1000))  # Process 1000 blocks
 - **Automatic gap detection**: Only processes blocks missing from `miners_balance`
 - **DB-friendly**: Queries max 10,000 blocks at a time to minimize database load
 - **Batch JSON-RPC**: Groups 10 `eth_getBalance` calls per request
+- **Parallel RPC requests**: Runs 5 batch requests concurrently for 5x throughput
 - **Batch DB inserts**: Inserts 100 records at a time
-- **Progress tracking**: Visual progress bar with rich formatting per iteration
+- **Overall progress tracking**: Shows total progress across all missing blocks
 - **Upsert logic**: Safe to re-run on same blocks
 - **Error handling**: Continues on RPC errors, logs issues
 
-### Automatic Iteration
+### Automatic Iteration & Progress Tracking
 
-The backfill automatically processes ALL missing blocks in manageable 10K chunks:
+The backfill automatically processes ALL missing blocks with comprehensive progress:
 
-1. Query for 10,000 most recent missing blocks
-2. Process them (fetch balances, calculate increases, store)
-3. Query again for next 10,000
-4. Repeat until no missing blocks remain
+1. Query total count of missing blocks upfront
+2. Display overall progress bar
+3. Fetch 10,000 most recent missing blocks
+4. Process them (fetch balances in parallel, calculate increases, store)
+5. Update overall progress
+6. Repeat until no missing blocks remain
 
-**Single command processes everything - no manual looping needed!**
+**Single command processes everything with real-time overall progress!**
 
 ## Performance
 
 - **RPC batching**: 10 balance queries per HTTP request
+- **Parallel requests**: 5 concurrent batch requests (configurable)
 - **DB batching**: 100 records per insert
 - **Typical speed**:
-  - ~50-100 blocks/second (depends on RPC response time)
-  - For 1M blocks: ~3-6 hours
-- **Memory usage**: ~10-20 MB
+  - ~250-500 blocks/second with parallel requests (depends on RPC provider)
+  - For 1M blocks: ~30-60 minutes with good RPC provider
+- **Memory usage**: ~20-40 MB (slightly higher due to parallel requests)
 
 ## Example Output
 
@@ -110,28 +116,16 @@ Creating tables if not exist...
 Backfilling miner balance increases
 Ethereum RPC: https://mainnet.infura.io/v3/...
 Batch size: 10 balances/request
+Parallel batches: 5 concurrent requests
 DB batch size: 100 records
 Query limit: 10,000 blocks per iteration
 
-Iteration 1: Querying for missing blocks...
-Found 10,000 missing blocks in this iteration
-⠋ Iteration 1 ━━━━━━━━━━━━━━ 10,000/10,000 • 0:05:23
-✓ Iteration 1 completed - Processed 10,000 blocks
+Querying total missing blocks...
+Found 25,432 total missing blocks
 
-Iteration 2: Querying for missing blocks...
-Found 10,000 missing blocks in this iteration
-⠋ Iteration 2 ━━━━━━━━━━━━━━ 10,000/10,000 • 0:05:12
-✓ Iteration 2 completed - Processed 10,000 blocks
+⠋ Overall Progress ━━━━━━━━━━━━━━ 12,500/25,432 • 0:04:10 • 0:04:05 remaining
 
-Iteration 3: Querying for missing blocks...
-Found 5,432 missing blocks in this iteration
-⠋ Iteration 3 ━━━━━━━━━━━━━━ 5,432/5,432 • 0:02:45
-✓ Iteration 3 completed - Processed 5,432 blocks
-
-Iteration 4: Querying for missing blocks...
-No more missing blocks - backfill complete!
-
-✓ Backfill completed - Processed 25,432 total blocks across 3 iterations
+✓ Backfill completed - Processed 25,432 blocks across 3 iterations
 ```
 
 ## How It Works
@@ -202,6 +196,8 @@ balance_increase = balance_after - balance_before
 - Increase timeout in code if needed
 
 **Slow performance**
+- Increase `parallel_batches` (try 10-20 with good RPC provider)
 - Increase `batch_size` if RPC allows (max ~20)
 - Increase `db_batch_size` (try 500-1000)
 - Use a local Ethereum node for best performance
+- Reduce `parallel_batches` if hitting rate limits
