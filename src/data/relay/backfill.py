@@ -98,17 +98,19 @@ class BackfillProposerPayloadDelivered:
                     self.logger.error(
                         f"HTTP {e.response.status_code} from {relay}: {e}"
                     )
-                    return []
+                    raise
 
             except httpx.HTTPError as e:
                 self.logger.error(f"HTTP error fetching from {relay}: {e}")
-                return []
+                raise
             except Exception as e:
                 self.logger.error(f"Error fetching from {relay}: {e}")
-                return []
+                raise
 
-        self.logger.error(f"Max retries ({max_retries}) exceeded for {relay}")
-        return []
+        # Max retries exceeded for 429 errors
+        error_msg = f"Max retries ({max_retries}) exceeded for {relay}"
+        self.logger.error(error_msg)
+        raise Exception(error_msg)
 
     async def _get_checkpoint(
         self, session: AsyncSession, relay: str

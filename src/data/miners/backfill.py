@@ -59,24 +59,34 @@ class BackfillMinerBalances:
     ) -> list[tuple[int, str]]:
         """Get block numbers that exist in blocks but not in miners_balance.
 
+        Args:
+            limit: Max blocks to fetch (capped at 10,000 to minimize DB impact)
+
         Returns:
             List of (block_number, miner) tuples
         """
         # Query blocks that don't have corresponding miner balance records
+        # Order by DESC to process most recent blocks first
         query_str = """
         SELECT b.number, b.miner
         FROM blocks b
         LEFT JOIN miners_balance mb ON b.number = mb.block_number
         WHERE mb.block_number IS NULL
         AND b.number > 0
-        ORDER BY b.number ASC
+        ORDER BY b.number DESC
         """
 
-        if limit:
-            query_str += f" LIMIT {limit}"
+        # Cap at 10,000 to minimize database impact
+        actual_limit = min(limit, 10_000) if limit else 10_000
+        query_str += f" LIMIT {actual_limit}"
 
+        self.logger.info(
+            f"Executing query to find missing blocks (limit: {actual_limit:,})..."
+        )
         result = await session.execute(text(query_str))
-        return [(row[0], row[1]) for row in result.fetchall()]
+        rows = result.fetchall()
+        self.logger.info(f"Query returned {len(rows)} missing blocks")
+        return [(row[0], row[1]) for row in rows]
 
     async def _batch_get_balances(
         self,
@@ -107,10 +117,17 @@ class BackfillMinerBalances:
         try:
             # eth_rpc_url is guaranteed to be str (validated in __init__)
             assert self.eth_rpc_url is not None
+
+            # Log first RPC call for debugging
+            if requests:
+                self.logger.debug(
+                    f"Fetching {len(requests)} balances (blocks {requests[0][1]} to {requests[-1][1]})"
+                )
+
             response = await client.post(
                 self.eth_rpc_url,
                 json=batch_payload,
-                timeout=30.0,
+                timeout=60.0,  # Increased timeout for batch requests
             )
             response.raise_for_status()
 
@@ -234,63 +251,87 @@ class BackfillMinerBalances:
         """Run the backfill process.
 
         Args:
-            limit: Maximum number of blocks to process (None = all missing blocks)
+            limit: Maximum number of blocks to process per iteration (None = all missing blocks)
+
+        Note:
+            Automatically iterates over 10K blocks at a time until all missing blocks
+            are processed, regardless of the limit parameter.
         """
+        self.console.print("[cyan]Creating tables if not exist...[/cyan]")
         await self.create_tables()
 
-        async with AsyncSessionLocal() as session:
-            # Get missing blocks
-            missing_blocks = await self._get_missing_block_numbers(session, limit)
-
-        if not missing_blocks:
-            self.console.print(
-                "[yellow]No missing blocks to process - all blocks have miner balance data[/yellow]"
-            )
-            return
-
-        total_blocks = len(missing_blocks)
-
-        self.console.print(
-            "[bold blue]Backfilling miner balance increases[/bold blue]"
-        )
+        self.console.print("[bold blue]Backfilling miner balance increases[/bold blue]")
         self.console.print(f"[cyan]Ethereum RPC: {self.eth_rpc_url}[/cyan]")
-        self.console.print(f"[cyan]Missing blocks: {total_blocks:,}[/cyan]")
-        self.console.print(f"[cyan]Batch size: {self.batch_size} balances/request[/cyan]")
-        self.console.print(f"[cyan]DB batch size: {self.db_batch_size} records[/cyan]\n")
-
-        # Create progress display
-        progress = Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TextColumn("•"),
-            TimeElapsedColumn(),
-            console=self.console,
-            expand=True,
+        self.console.print(
+            f"[cyan]Batch size: {self.batch_size} balances/request[/cyan]"
         )
+        self.console.print(f"[cyan]DB batch size: {self.db_batch_size} records[/cyan]")
+        self.console.print("[cyan]Query limit: 10,000 blocks per iteration[/cyan]\n")
 
-        total_processed = 0
+        total_processed_all = 0
+        iteration = 0
 
-        with progress:
-            task_id = progress.add_task(
-                "Processing blocks", total=total_blocks
+        # Keep processing until no more missing blocks
+        while True:
+            iteration += 1
+            self.console.print(
+                f"[cyan]Iteration {iteration}: Querying for missing blocks...[/cyan]"
             )
 
-            async with httpx.AsyncClient() as client:
-                async with AsyncSessionLocal() as session:
-                    # Process in batches
-                    for i in range(0, len(missing_blocks), self.db_batch_size):
-                        batch = missing_blocks[i : i + self.db_batch_size]
+            async with AsyncSessionLocal() as session:
+                # Get next batch of missing blocks (max 10K)
+                missing_blocks = await self._get_missing_block_numbers(session, limit)
 
-                        processed = await self._process_blocks_batch(
-                            client, session, batch, progress, task_id
-                        )
-                        total_processed += processed
+            if not missing_blocks:
+                self.console.print(
+                    "[yellow]No more missing blocks - backfill complete![/yellow]"
+                )
+                break
+
+            total_blocks = len(missing_blocks)
+            self.console.print(
+                f"[green]Found {total_blocks:,} missing blocks in this iteration[/green]"
+            )
+
+            # Create progress display
+            progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TextColumn("•"),
+                TimeElapsedColumn(),
+                console=self.console,
+                expand=True,
+            )
+
+            iteration_processed = 0
+
+            with progress:
+                task_id = progress.add_task(
+                    f"Iteration {iteration}", total=total_blocks
+                )
+
+                async with httpx.AsyncClient() as client:
+                    async with AsyncSessionLocal() as session:
+                        # Process in batches
+                        for i in range(0, len(missing_blocks), self.db_batch_size):
+                            batch = missing_blocks[i : i + self.db_batch_size]
+
+                            processed = await self._process_blocks_batch(
+                                client, session, batch, progress, task_id
+                            )
+                            iteration_processed += processed
+
+            total_processed_all += iteration_processed
+            self.console.print(
+                f"[green]✓ Iteration {iteration} completed - "
+                f"Processed {iteration_processed:,} blocks[/green]\n"
+            )
 
         self.console.print(
             f"\n[bold green]✓ Backfill completed[/bold green] - "
-            f"Processed {total_processed:,} blocks"
+            f"Processed {total_processed_all:,} total blocks across {iteration} iterations"
         )
 
 

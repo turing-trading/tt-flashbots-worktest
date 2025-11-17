@@ -25,9 +25,9 @@ For each block in the `blocks` table that doesn't have a corresponding entry in 
 |--------|------|-------------|
 | `block_number` | BigInteger | Block number (primary key, indexed) |
 | `miner` | String(42) | Miner address (indexed) |
-| `balance_before` | BigInteger | Balance in Wei at block N-1 |
-| `balance_after` | BigInteger | Balance in Wei at block N |
-| `balance_increase` | BigInteger | Increase in Wei (after - before) |
+| `balance_before` | Numeric | Balance in Wei at block N-1 |
+| `balance_after` | Numeric | Balance in Wei at block N |
+| `balance_increase` | Numeric | Increase in Wei (after - before, can be negative) |
 
 **Index:** `idx_miner_block` on `(miner, block_number)` for efficient queries by miner.
 
@@ -73,12 +73,26 @@ run(backfill.run(limit=1000))  # Process 1000 blocks
 
 ## Features
 
+- **Automatic iteration**: Processes ALL missing blocks in 10K chunks automatically
+- **Recent-first processing**: Always starts with the most recent missing blocks
 - **Automatic gap detection**: Only processes blocks missing from `miners_balance`
+- **DB-friendly**: Queries max 10,000 blocks at a time to minimize database load
 - **Batch JSON-RPC**: Groups 10 `eth_getBalance` calls per request
 - **Batch DB inserts**: Inserts 100 records at a time
-- **Progress tracking**: Visual progress bar with rich formatting
+- **Progress tracking**: Visual progress bar with rich formatting per iteration
 - **Upsert logic**: Safe to re-run on same blocks
 - **Error handling**: Continues on RPC errors, logs issues
+
+### Automatic Iteration
+
+The backfill automatically processes ALL missing blocks in manageable 10K chunks:
+
+1. Query for 10,000 most recent missing blocks
+2. Process them (fetch balances, calculate increases, store)
+3. Query again for next 10,000
+4. Repeat until no missing blocks remain
+
+**Single command processes everything - no manual looping needed!**
 
 ## Performance
 
@@ -92,15 +106,32 @@ run(backfill.run(limit=1000))  # Process 1000 blocks
 ## Example Output
 
 ```
+Creating tables if not exist...
 Backfilling miner balance increases
 Ethereum RPC: https://mainnet.infura.io/v3/...
-Missing blocks: 125,432
 Batch size: 10 balances/request
 DB batch size: 100 records
+Query limit: 10,000 blocks per iteration
 
-⠋ Processing blocks ━━━━━━━━━━━━━━ 1,234/125,432 • 0:01:23
+Iteration 1: Querying for missing blocks...
+Found 10,000 missing blocks in this iteration
+⠋ Iteration 1 ━━━━━━━━━━━━━━ 10,000/10,000 • 0:05:23
+✓ Iteration 1 completed - Processed 10,000 blocks
 
-✓ Backfill completed - Processed 125,432 blocks
+Iteration 2: Querying for missing blocks...
+Found 10,000 missing blocks in this iteration
+⠋ Iteration 2 ━━━━━━━━━━━━━━ 10,000/10,000 • 0:05:12
+✓ Iteration 2 completed - Processed 10,000 blocks
+
+Iteration 3: Querying for missing blocks...
+Found 5,432 missing blocks in this iteration
+⠋ Iteration 3 ━━━━━━━━━━━━━━ 5,432/5,432 • 0:02:45
+✓ Iteration 3 completed - Processed 5,432 blocks
+
+Iteration 4: Querying for missing blocks...
+No more missing blocks - backfill complete!
+
+✓ Backfill completed - Processed 25,432 total blocks across 3 iterations
 ```
 
 ## How It Works
@@ -113,7 +144,7 @@ FROM blocks b
 LEFT JOIN miners_balance mb ON b.number = mb.block_number
 WHERE mb.block_number IS NULL
   AND b.number > 0
-ORDER BY b.number ASC
+ORDER BY b.number DESC  -- Most recent blocks first
 ```
 
 ### JSON-RPC Batch Request
