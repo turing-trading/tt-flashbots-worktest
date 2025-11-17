@@ -1,6 +1,5 @@
 """Backfill data from relays."""
 
-import logging
 from asyncio import create_task, gather, run
 
 import httpx
@@ -21,8 +20,7 @@ from src.data.models import (
     SignedValidatorRegistration,
     SignedValidatorRegistrationPayload,
 )
-
-logger = logging.getLogger(__name__)
+from src.helpers.logging import get_logger
 
 
 class BackfillProposerPayloadDelivered:
@@ -35,7 +33,7 @@ class BackfillProposerPayloadDelivered:
             "/relay/v1/data/bidtraces/proposer_payload_delivered",
         )
         self.limit = LIMITS.get("proposer_payload_delivered", 200)
-        self.logger = logging.getLogger("backfill_payloads")
+        self.logger = get_logger("backfill_payloads")
 
     async def _get_latest_slot(self) -> int:
         """Get the latest slot from the beacon endpoint."""
@@ -53,20 +51,20 @@ class BackfillProposerPayloadDelivered:
     ) -> list[SignedValidatorRegistration]:
         """Fetch data from the relay endpoint."""
         url = f"https://{relay}{self.endpoint}"
-        payload = SignedValidatorRegistrationPayload(cursor=cursor, limit=self.limit)
+        params = {"cursor": str(cursor), "limit": str(self.limit)}
 
         try:
-            response = await client.post(url, json=payload.model_dump(), timeout=30.0)
+            response = await client.get(url, params=params, timeout=30.0)
             response.raise_for_status()
 
             return TypeAdapter(list[SignedValidatorRegistration]).validate_json(
-                response.json()
+                response.text
             )
         except httpx.HTTPError as e:
-            logger.error(f"HTTP error fetching from {relay}: {e}")
+            self.logger.error(f"HTTP error fetching from {relay}: {e}")
             return []
         except Exception as e:
-            logger.error(f"Error fetching from {relay}: {e}")
+            self.logger.error(f"Error fetching from {relay}: {e}")
             return []
 
     async def _get_checkpoint(
@@ -181,12 +179,12 @@ class BackfillProposerPayloadDelivered:
                     return
 
                 if total_registrations > 0:
-                    logger.info(
+                    self.logger.info(
                         f"Backfilled {total_registrations} registrations from {relay} "
                         f"(slots {slot_from} to {last_slot})"
                     )
                 else:
-                    logger.info(f"No new registrations from {relay}")
+                    self.logger.info(f"No new registrations from {relay}")
 
     async def run(self) -> None:
         """Run the backfill."""
@@ -195,6 +193,7 @@ class BackfillProposerPayloadDelivered:
         latest_slot = await self._get_latest_slot()
         self.logger.info(f"Running backfill for relay: {RELAYS[-1:]}")
         self.logger.info(f"Latest slot: {latest_slot}")
+        self.logger.info(f"Limit: {self.limit}")
         tasks = [
             create_task(self.backfill(relay, latest_slot)) for relay in RELAYS[-1:]
         ]

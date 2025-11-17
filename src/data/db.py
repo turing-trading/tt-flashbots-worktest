@@ -3,7 +3,7 @@
 import os
 
 from dotenv import load_dotenv
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import BigInteger, Column, Integer, String
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
@@ -63,8 +63,8 @@ class SignedValidatorRegistrationDB(Base):
     builder_pubkey = Column(String, primary_key=False)
     proposer_pubkey = Column(String, primary_key=False)
     proposer_fee_recipient = Column(String, primary_key=False)
-    gas_limit = Column(Integer, primary_key=False)
-    gas_used = Column(Integer, primary_key=False)
-    value = Column(Integer, primary_key=False)
-    block_number = Column(Integer, primary_key=False)
+    gas_limit = Column(BigInteger, primary_key=False)
+    gas_used = Column(BigInteger, primary_key=False)
+    value = Column(BigInteger, primary_key=False)
+    block_number = Column(BigInteger, primary_key=False)
     num_tx = Column(Integer, primary_key=False)
