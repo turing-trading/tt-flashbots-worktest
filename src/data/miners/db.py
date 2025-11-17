@@ -1,0 +1,21 @@
+"""Database models for miner balance data."""
+
+from sqlalchemy import BigInteger, Column, Index, String
+
+from src.helpers.db import Base
+
+
+class MinerBalanceDB(Base):
+    """Miner balance increase per block."""
+
+    __tablename__ = "miners_balance"
+
+    block_number = Column(BigInteger, primary_key=True, index=True)
+    miner = Column(String(42), nullable=False, index=True)
+    balance_before = Column(BigInteger, nullable=False)  # Wei at block N-1
+    balance_after = Column(BigInteger, nullable=False)  # Wei at block N
+    balance_increase = Column(BigInteger, nullable=False)  # Wei increase
+
+    __table_args__ = (
+        Index("idx_miner_block", "miner", "block_number"),
+    )

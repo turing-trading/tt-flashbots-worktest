@@ -1,29 +1,36 @@
 """Backfill data from relays."""
 
-from asyncio import CancelledError, Lock, create_task, gather, run, sleep
+from asyncio import CancelledError, create_task, gather, run, sleep
 
 import httpx
 from pydantic import TypeAdapter
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TaskID,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from tqdm.asyncio import tqdm
 
-from src.data.constants import (
+from src.data.relay.constants import (
     BEACON_ENDPOINT,
     ENDPOINTS,
     LIMITS,
     RELAY_LIMITS,
     RELAYS,
 )
-from src.data.db import (
-    AsyncSessionLocal,
-    Base,
+from src.data.relay.db import (
     SignedValidatorRegistrationCheckpoints,
     SignedValidatorRegistrationDB,
-    async_engine,
 )
-from src.data.models import SignedValidatorRegistration
+from src.data.relay.models import SignedValidatorRegistration
+from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
 
 
@@ -38,8 +45,9 @@ class BackfillProposerPayloadDelivered:
         )
         self.default_limit = LIMITS.get("proposer_payload_delivered", 200)
         self.logger = get_logger("backfill_payloads", log_level="WARNING")
-        self.pbars = {}  # One progress bar per relay
-        self.pbar_lock = Lock()  # Lock for thread-safe progress bar updates
+        self.console = Console()
+        self.progress = None
+        self.tasks = {}  # Track progress task IDs per relay
 
     def _get_limit_for_relay(self, relay: str) -> int:
         """Get the appropriate limit for a specific relay."""
@@ -183,108 +191,142 @@ class BackfillProposerPayloadDelivered:
         async with async_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-    async def backfill(self, relay: str, latest_slot: int, pbar_position: int) -> None:
+    async def _backfill_range(
+        self,
+        client: httpx.AsyncClient,
+        session: AsyncSession,
+        relay: str,
+        start_slot: int,
+        end_slot: int,
+        relay_limit: int,
+        task_id: TaskID,
+        phase_name: str,
+        from_slot: int,
+        to_slot: int,
+    ) -> tuple[int, int]:
+        """Backfill a specific range going backwards from start_slot to end_slot.
+
+        Returns:
+            tuple[int, int]: Updated (from_slot, to_slot) after backfilling
+        """
+        current_cursor = start_slot
+        total_registrations = 0
+
+        if self.progress is None:
+            raise ValueError("Progress is not initialized")
+
+        while current_cursor > end_slot:
+            registrations = await self._fetch_data(client, relay, current_cursor)
+
+            if not registrations:
+                break
+
+            await self._store_registrations(session, registrations, relay)
+            total_registrations += len(registrations)
+
+            min_slot_in_batch = min(reg.slot for reg in registrations)
+            max_slot_in_batch = max(reg.slot for reg in registrations)
+
+            # Update checkpoint based on phase
+            if phase_name == "new":
+                # Phase 1: Updating to_slot as we fetch newer data
+                to_slot = max(to_slot, max_slot_in_batch)
+            else:  # historical
+                # Phase 2: Updating from_slot as we go backwards
+                from_slot = min(from_slot, min_slot_in_batch)
+
+            # Save checkpoint after each batch
+            await self._update_checkpoint(session, relay, from_slot, to_slot)
+
+            # Update progress
+            slots_processed = start_slot - min_slot_in_batch
+            self.progress.update(
+                task_id,
+                completed=slots_processed,
+                description=f"{relay[:25]:25} [{phase_name}] slot={min_slot_in_batch:,}",
+            )
+
+            self.logger.debug(
+                f"[{phase_name}] Fetched {len(registrations)} from {relay} "
+                f"(slots {min_slot_in_batch} to {max_slot_in_batch})"
+            )
+
+            current_cursor = min_slot_in_batch
+
+            if len(registrations) < relay_limit or min_slot_in_batch <= end_slot:
+                break
+
+        return from_slot, to_slot
+
+    async def backfill(self, relay: str, latest_slot: int) -> None:
         """Backfill proposer payload delivered data.
 
-        The API returns data in descending slot order (newest first).
-        The cursor parameter acts as an upper bound (exclusive) - it returns slots < cursor.
-        Without cursor, it returns the most recent slots.
+        Two-phase backfill strategy:
+        1. Phase 1: Always fetch latest_slot -> to_slot (new data since last run)
+        2. Phase 2: If from_slot != 0, fetch from_slot -> 0 (historical data)
         """
+        if self.progress is None:
+            raise ValueError("Progress is not initialized")
         async with AsyncSessionLocal() as session:
-            # Get existing checkpoint if available
             checkpoint = await self._get_checkpoint(session, relay)
+
             if checkpoint is None:
-                # First run: start from the latest slot and work backwards
-                current_cursor = latest_slot
-                min_slot_seen = latest_slot
+                from_slot = 0
+                to_slot = latest_slot
+                phase1_needed = True
+                phase2_needed = False
             else:
-                # Continue from where we left off (go further back in history)
-                current_cursor = checkpoint[0]
-                min_slot_seen = checkpoint[0]
+                from_slot, to_slot = checkpoint
+                phase1_needed = to_slot < latest_slot
+                phase2_needed = from_slot > 0
 
-            # Create progress bar for this relay
+            # Create progress task for this relay
             estimated_total_slots = latest_slot - 5000000
-            pbar = tqdm(
+            task_id = self.progress.add_task(
+                f"{relay[:25]:25}",
                 total=estimated_total_slots,
-                desc=f"{relay[:30]:30}",
-                unit="slots",
-                unit_scale=True,
-                dynamic_ncols=True,
-                position=pbar_position,
-                leave=True,
-                mininterval=0.5,  # Update at most every 0.5s
-                maxinterval=2.0,   # Update at least every 2s
             )
-            self.pbars[relay] = pbar
+            self.tasks[relay] = task_id
 
-            # Use async httpx client for requests
             async with httpx.AsyncClient() as client:
-                total_registrations = 0
                 relay_limit = self._get_limit_for_relay(relay)
-                last_progress = 0
 
-                # Fetch data from relay, paginating backwards through history
-                while True:
-                    registrations = await self._fetch_data(
-                        client, relay, current_cursor
-                    )
-
-                    if not registrations:
-                        # No more data available
-                        break
-
-                    await self._store_registrations(session, registrations, relay)
-                    total_registrations += len(registrations)
-
-                    # Find the minimum slot in this batch
-                    min_slot_in_batch = min(reg.slot for reg in registrations)
-                    max_slot_in_batch = max(reg.slot for reg in registrations)
-
-                    # Update checkpoint with the range we've covered
-                    min_slot_seen = min(min_slot_seen, min_slot_in_batch)
-                    await self._update_checkpoint(
+                # Phase 1: Fetch new data (latest_slot -> to_slot)
+                if phase1_needed:
+                    from_slot, to_slot = await self._backfill_range(
+                        client,
                         session,
                         relay,
-                        min_slot_seen,
                         latest_slot,
+                        to_slot,
+                        relay_limit,
+                        task_id,
+                        "new",
+                        from_slot,
+                        to_slot,
                     )
 
-                    # Update progress bar (with lock to prevent concurrent updates)
-                    slots_processed = latest_slot - min_slot_in_batch
-                    progress_delta = slots_processed - last_progress
-                    if progress_delta > 0:
-                        async with self.pbar_lock:
-                            pbar.update(progress_delta)
-                            pbar.set_postfix(
-                                {
-                                    "slot": min_slot_in_batch,
-                                    "records": total_registrations,
-                                },
-                                refresh=True,
-                            )
-                            last_progress = slots_processed
-
-                    self.logger.debug(
-                        f"Fetched {len(registrations)} registrations from {relay} "
-                        f"(slots {min_slot_in_batch} to {max_slot_in_batch})"
+                # Phase 2: Continue historical backfill (from_slot -> 0)
+                if phase2_needed:
+                    from_slot, to_slot = await self._backfill_range(
+                        client,
+                        session,
+                        relay,
+                        from_slot,
+                        0,
+                        relay_limit,
+                        task_id,
+                        "historical",
+                        from_slot,
+                        to_slot,
                     )
 
-                    # Move cursor to continue pagination backwards
-                    current_cursor = min_slot_in_batch
-
-                    # Stop if we got fewer results than limit (likely end of available data)
-                    if len(registrations) < relay_limit:
-                        break
-
-                # Close progress bar for this relay
-                pbar.close()
-
-                if total_registrations > 0:
-                    self.logger.debug(
-                        f"Backfilled {total_registrations} total registrations from {relay}"
-                    )
-                else:
-                    self.logger.debug(f"No new registrations from {relay}")
+                # Mark as complete
+                self.progress.update(
+                    task_id,
+                    description=f"{relay[:25]:25} [green]✓[/green] done",
+                    completed=estimated_total_slots,
+                )
 
     async def run(self) -> None:
         """Run the backfill."""
@@ -293,27 +335,36 @@ class BackfillProposerPayloadDelivered:
         latest_slot = await self._get_latest_slot()
         latest_slot = int(latest_slot - (60 * 60 / 12))  # Security buffer of 1 hour
 
-        tqdm.write(f"Running backfill for {len(RELAYS)} relays")
-        tqdm.write(f"Latest slot: {latest_slot}")
+        self.console.print(
+            f"[bold blue]Running backfill for {len(RELAYS)} relays[/bold blue]"
+        )
+        self.console.print(f"[cyan]Latest slot: {latest_slot:,}[/cyan]\n")
 
-        # Create tasks with position parameter for each relay
-        tasks = [
-            create_task(self.backfill(relay, latest_slot, idx))
-            for idx, relay in enumerate(RELAYS)
-        ]
+        # Create progress display
+        self.progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TextColumn("•"),
+            TimeElapsedColumn(),
+            console=self.console,
+            expand=True,
+        )
 
-        try:
-            await gather(*tasks)
-        except CancelledError:
-            tqdm.write("Backfill cancelled")
-        except Exception as e:
-            tqdm.write(f"Error running backfill: {e}")
-            raise e
-        finally:
-            # Close any remaining progress bars
-            for pbar in self.pbars.values():
-                pbar.close()
-            tqdm.write("Backfill completed")
+        with self.progress:
+            # Create tasks for each relay
+            tasks = [create_task(self.backfill(relay, latest_slot)) for relay in RELAYS]
+
+            try:
+                await gather(*tasks)
+            except CancelledError:
+                self.console.print("[yellow]Backfill cancelled[/yellow]")
+            except Exception as e:
+                self.console.print(f"[red]Error running backfill: {e}[/red]")
+                raise e
+            finally:
+                self.console.print("\n[bold green]✓ Backfill completed[/bold green]")
 
 
 if __name__ == "__main__":

@@ -1,51 +1,8 @@
-"""Database for the project."""
+"""Relay database models."""
 
-import os
-
-from dotenv import load_dotenv
 from sqlalchemy import BigInteger, Column, Integer, Numeric, String
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import declarative_base
 
-# Load environment variables from .env file
-load_dotenv()
-
-Base = declarative_base()
-
-# Database URL
-POSTGRE_HOST = os.getenv("POSTGRE_HOST")
-if not POSTGRE_HOST:
-    raise ValueError("POSTGRE_HOST is not set")
-
-POSTGRE_PORT = os.getenv("POSTGRE_PORT", "5432")
-
-POSTGRE_USER = os.getenv("POSTGRE_USER")
-if not POSTGRE_USER:
-    raise ValueError("POSTGRE_USER is not set")
-
-POSTGRE_PASSWORD = os.getenv("POSTGRE_PASSWORD")
-if not POSTGRE_PASSWORD:
-    raise ValueError("POSTGRE_PASSWORD is not set")
-
-POSTGRE_DB = os.getenv("POSTGRE_DB")
-if not POSTGRE_DB:
-    raise ValueError("POSTGRE_DB is not set")
-
-# Use psycopg (version 3) as the async PostgreSQL driver
-DATABASE_URL = (
-    "postgresql+psycopg://"
-    f"{POSTGRE_USER}:{POSTGRE_PASSWORD}"
-    f"@{POSTGRE_HOST}:{POSTGRE_PORT}"
-    f"/{POSTGRE_DB}"
-)
-
-async_engine = create_async_engine(DATABASE_URL, echo=False)
-
-AsyncSessionLocal = async_sessionmaker(
-    async_engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
+from src.helpers.db import Base
 
 
 class SignedValidatorRegistrationCheckpoints(Base):
