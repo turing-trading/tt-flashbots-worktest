@@ -1,0 +1,41 @@
+-- Relay Market Share
+-- For all mev-boost relays, calculate each relay's share of payloads delivered
+--
+-- This query calculates the percentage of blocks delivered by each relay
+-- by unnesting the relays array and counting occurrences.
+--
+-- Variables:
+-- - $__timeFilter(block_timestamp): Grafana time range filter
+--
+-- Returns:
+-- - relay: Relay name
+-- - blocks_delivered: Number of blocks delivered by this relay
+-- - market_share_pct: Percentage of total blocks delivered
+
+WITH relay_blocks AS (
+    SELECT
+        UNNEST(relays) as relay,
+        block_number
+    FROM analysis_pbs
+    WHERE
+        $__timeFilter(block_timestamp)
+        AND relays IS NOT NULL
+),
+relay_counts AS (
+    SELECT
+        relay,
+        COUNT(*) as blocks_delivered
+    FROM relay_blocks
+    GROUP BY relay
+),
+total_blocks AS (
+    SELECT SUM(blocks_delivered) as total
+    FROM relay_counts
+)
+SELECT
+    rc.relay,
+    rc.blocks_delivered,
+    ROUND((rc.blocks_delivered::numeric / tb.total * 100), 2) as market_share_pct
+FROM relay_counts rc
+CROSS JOIN total_blocks tb
+ORDER BY rc.blocks_delivered DESC;

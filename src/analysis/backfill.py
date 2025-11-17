@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.analysis.db import AnalysisPBSDB
 from src.data.blocks.db import BlockDB
+from src.data.builders.db import BuilderIdentifiersDB
 from src.data.proposers.db import ProposerBalancesDB
 from src.data.relays.db import RelaysPayloadsDB
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
@@ -91,7 +92,8 @@ class BackfillAnalysisPBS:
         """
         self.logger.debug(f"Aggregating data for {len(block_numbers)} blocks")
 
-        # Build the aggregation query
+        # Build the aggregation query with builder_name from builders_identifiers
+        # We need to get the builder_pubkey from relays_payloads first, then join with builders_identifiers
         stmt = (
             select(
                 BlockDB.number.label("block_number"),
@@ -99,6 +101,7 @@ class BackfillAnalysisPBS:
                 ProposerBalancesDB.balance_increase.label("builder_balance_increase"),
                 func.array_agg(RelaysPayloadsDB.relay).label("relays"),
                 func.max(RelaysPayloadsDB.value).label("proposer_subsidy"),
+                func.max(BuilderIdentifiersDB.builder_name).label("builder_name"),
             )
             .select_from(BlockDB)
             .outerjoin(
@@ -107,6 +110,10 @@ class BackfillAnalysisPBS:
             )
             .outerjoin(
                 RelaysPayloadsDB, BlockDB.number == RelaysPayloadsDB.block_number
+            )
+            .outerjoin(
+                BuilderIdentifiersDB,
+                RelaysPayloadsDB.builder_pubkey == BuilderIdentifiersDB.builder_pubkey,
             )
             .where(BlockDB.number.in_(block_numbers))
             .group_by(
@@ -146,6 +153,7 @@ class BackfillAnalysisPBS:
                     "builder_balance_increase": builder_balance_increase,
                     "relays": relays if relays else None,
                     "proposer_subsidy": proposer_subsidy,
+                    "builder_name": row.builder_name,
                 }
             )
 
@@ -175,6 +183,7 @@ class BackfillAnalysisPBS:
                 AnalysisPBSDB.builder_balance_increase: stmt.excluded.builder_balance_increase,
                 AnalysisPBSDB.relays: stmt.excluded.relays,
                 AnalysisPBSDB.proposer_subsidy: stmt.excluded.proposer_subsidy,
+                AnalysisPBSDB.builder_name: stmt.excluded.builder_name,
             },
         )
 
