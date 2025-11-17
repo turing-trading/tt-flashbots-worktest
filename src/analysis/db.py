@@ -1,6 +1,6 @@
 """Database models for PBS analysis."""
 
-from sqlalchemy import ARRAY, BigInteger, Column, DateTime, Numeric, String
+from sqlalchemy import ARRAY, BigInteger, Column, DateTime, Float, String
 
 from src.helpers.db import Base
 
@@ -12,6 +12,6 @@ class AnalysisPBSDB(Base):
 
     block_number = Column(BigInteger, primary_key=True, index=True)
     block_timestamp = Column(DateTime, nullable=False, index=True)
-    builder_balance_increase = Column(Numeric, nullable=True)
+    builder_balance_increase = Column(Float, nullable=True)  # ETH (converted from Wei)
     relays = Column(ARRAY(String(255)), nullable=True)
-    proposer_subsidy = Column(Numeric, nullable=True)
+    proposer_subsidy = Column(Float, nullable=True)  # ETH (converted from Wei)

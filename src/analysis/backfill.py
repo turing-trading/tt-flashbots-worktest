@@ -1,6 +1,7 @@
 """Backfill PBS analysis data by aggregating from blocks, proposers_balance, and relays_payloads."""
 
 from asyncio import run
+from datetime import datetime
 
 from rich.console import Console
 from rich.progress import (
@@ -45,14 +46,23 @@ class BackfillAnalysisPBS:
     async def _get_missing_blocks(self, session: AsyncSession) -> list[tuple[int, ...]]:
         """Get block numbers that exist in blocks table but not in analysis_pbs.
 
+        Only processes blocks from June 2025 onwards.
+
         Returns:
             List of block numbers that need to be processed
         """
-        # Find blocks that don't exist in analysis_pbs
+        # Date filter: June 1, 2025 00:00:00 UTC
+        start_date = datetime(2025, 6, 1, 0, 0, 0)
+
+        # Use NOT EXISTS for better performance on large tables
+        subquery = select(AnalysisPBSDB.block_number).where(
+            AnalysisPBSDB.block_number == BlockDB.number
+        )
+
         stmt = (
             select(BlockDB.number)
-            .outerjoin(AnalysisPBSDB, BlockDB.number == AnalysisPBSDB.block_number)
-            .where(AnalysisPBSDB.block_number.is_(None))
+            .where(~subquery.exists())
+            .where(BlockDB.timestamp >= start_date)
             .order_by(BlockDB.number.desc())
         )
 
@@ -61,8 +71,9 @@ class BackfillAnalysisPBS:
         return missing_blocks
 
     async def _get_block_count(self, session: AsyncSession) -> int:
-        """Get total count of blocks in the blocks table."""
-        stmt = select(func.count()).select_from(BlockDB)
+        """Get total count of blocks in the blocks table from June 2025 onwards."""
+        start_date = datetime(2025, 6, 1, 0, 0, 0)
+        stmt = select(func.count()).select_from(BlockDB).where(BlockDB.timestamp >= start_date)
         result = await session.execute(stmt)
         return result.scalar_one()
 
@@ -78,6 +89,8 @@ class BackfillAnalysisPBS:
         Returns:
             List of dictionaries with aggregated data
         """
+        self.logger.debug(f"Aggregating data for {len(block_numbers)} blocks")
+
         # Build the aggregation query
         stmt = (
             select(
@@ -103,21 +116,36 @@ class BackfillAnalysisPBS:
             )
         )
 
+        self.logger.debug("Executing aggregation query...")
         result = await session.execute(stmt)
         rows = result.fetchall()
+        self.logger.debug(f"Got {len(rows)} rows from aggregation")
 
-        # Convert to dictionaries
+        # Convert to dictionaries and convert Wei to ETH
         aggregated_data = []
         for row in rows:
             # Filter out None values from relays array
             relays = [r for r in (row.relays or []) if r is not None]
+
+            # Convert Wei to ETH by dividing by 1e18
+            builder_balance_increase = (
+                float(row.builder_balance_increase) / 1e18
+                if row.builder_balance_increase is not None
+                else None
+            )
+            proposer_subsidy = (
+                float(row.proposer_subsidy) / 1e18
+                if row.proposer_subsidy is not None
+                else None
+            )
+
             aggregated_data.append(
                 {
                     "block_number": row.block_number,
                     "block_timestamp": row.block_timestamp,
-                    "builder_balance_increase": row.builder_balance_increase,
+                    "builder_balance_increase": builder_balance_increase,
                     "relays": relays if relays else None,
-                    "proposer_subsidy": row.proposer_subsidy,
+                    "proposer_subsidy": proposer_subsidy,
                 }
             )
 
@@ -133,7 +161,10 @@ class BackfillAnalysisPBS:
             data: List of aggregated data dictionaries
         """
         if not data:
+            self.logger.debug("No data to store, skipping")
             return
+
+        self.logger.debug(f"Storing {len(data)} rows...")
 
         # Upsert data into analysis_pbs table
         stmt = pg_insert(AnalysisPBSDB).values(data)
@@ -149,6 +180,7 @@ class BackfillAnalysisPBS:
 
         await session.execute(stmt)
         await session.commit()
+        self.logger.debug("Data stored successfully")
 
     async def _process_batch(
         self,
@@ -181,15 +213,20 @@ class BackfillAnalysisPBS:
 
     async def run(self) -> None:
         """Run the backfill process."""
+        self.logger.info("Creating tables if they don't exist...")
         await self.create_tables()
 
         async with AsyncSessionLocal() as session:
             # Get total block count
+            self.logger.info("Counting total blocks...")
             total_blocks = await self._get_block_count(session)
+            self.logger.info(f"Total blocks in database: {total_blocks:,}")
 
             # Get missing blocks
+            self.logger.info("Finding missing blocks...")
             missing_blocks_result = await self._get_missing_blocks(session)
             missing_blocks = [row[0] for row in missing_blocks_result]
+            self.logger.info(f"Found {len(missing_blocks):,} missing blocks")
 
             if not missing_blocks:
                 self.console.print(
@@ -200,8 +237,9 @@ class BackfillAnalysisPBS:
             total_missing = len(missing_blocks)
 
             self.console.print("[bold blue]Backfilling PBS Analysis Data[/bold blue]")
+            self.console.print("[cyan]Date range: June 2025 onwards[/cyan]")
             self.console.print(
-                f"[cyan]Total blocks in database: {total_blocks:,}[/cyan]"
+                f"[cyan]Total blocks in range: {total_blocks:,}[/cyan]"
             )
             self.console.print(
                 f"[cyan]Missing blocks to process: {total_missing:,}[/cyan]\n"

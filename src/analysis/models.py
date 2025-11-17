@@ -1,7 +1,6 @@
 """Pydantic models for PBS analysis data."""
 
 from datetime import datetime
-from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
@@ -13,14 +12,14 @@ class AnalysisPBS(BaseModel):
     block_timestamp: datetime = Field(
         ..., description="Block timestamp from blocks table"
     )
-    builder_balance_increase: Decimal | None = Field(
-        None, description="Builder balance increase from proposers_balances table"
+    builder_balance_increase: float | None = Field(
+        None, description="Builder balance increase in ETH from proposers_balances table"
     )
     relays: list[str] | None = Field(
         None, description="List of relay names from relays_payloads table"
     )
-    proposer_subsidy: Decimal | None = Field(
-        None, description="Proposer subsidy (value) from relays_payloads table"
+    proposer_subsidy: float | None = Field(
+        None, description="Proposer subsidy in ETH (value) from relays_payloads table"
     )
 
     class Config:
