@@ -53,6 +53,7 @@ htmlcov/
 
 # Data
 data/
+!src/data/
 
 # Output
 output/

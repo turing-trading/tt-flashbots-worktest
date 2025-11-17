@@ -1,6 +1,6 @@
 # Flashbots Worktest
 
-Python 3.13 project with pandas, ruff, pyright, and pytest.
+Python 3.14 project with pandas, ruff, pyright, and pytest.
 
 ## Setup
 
