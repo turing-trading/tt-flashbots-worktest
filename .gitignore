@@ -51,4 +51,50 @@ htmlcov/
 .env
 .env.local
 
+# Data
+data/
 
+# Output
+output/
+*.csv
+*.json
+*.parquet
+*.feather
+*.pickle
+*.pkl
+*.pkl.gz
+*.pkl.bz2
+*.pkl.zip
+*.pkl.tar
+*.pkl.tar.gz
+*.pkl.tar.bz2
+*.pkl.tar.zip
+
+# Logs
+logs/
+*.log
+
+# Plots
+plots/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.webp
+*.ico
+
+
+# Models
+models/
+*.pkl
+*.pkl.gz
+*.pkl.bz2
+*.pkl.zip
+*.pkl.tar
+*.pkl.tar.gz
+*.pkl.tar.bz2
+*.pkl.tar.zip
+
+# Claude
+CLAUDE.md
