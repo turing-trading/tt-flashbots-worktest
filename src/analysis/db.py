@@ -15,3 +15,4 @@ class AnalysisPBSDB(Base):
     builder_balance_increase = Column(Float, nullable=True)  # ETH (converted from Wei)
     relays = Column(ARRAY(String(255)), nullable=True)
     proposer_subsidy = Column(Float, nullable=True)  # ETH (converted from Wei)
+    builder_name = Column(String, nullable=True, index=True)
