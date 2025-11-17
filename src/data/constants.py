@@ -1,5 +1,7 @@
 """Constants for the project."""
 
+import os
+
 RELAYS = [
     "relay.ultrasound.money",
     "bloxroute.max-profit.blxrbdn.com",
@@ -18,3 +20,7 @@ ENDPOINTS = {
 LIMITS = {
     "proposer_payload_delivered": 200,
 }
+
+BEACON_ENDPOINT = os.getenv(
+    "BEACON_ENDPOINT", "https://ethereum-beacon-api.publicnode.com"
+)

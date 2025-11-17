@@ -2,23 +2,40 @@
 
 import os
 
+from dotenv import load_dotenv
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
+# Load environment variables from .env file
+load_dotenv()
+
 Base = declarative_base()
 
-# Database URL - defaults to SQLite if not set
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./flashbots_data.db")
+# Database URL
+POSTGRE_HOST = os.getenv("POSTGRE_HOST")
+if not POSTGRE_HOST:
+    raise ValueError("POSTGRE_HOST is not set")
 
-# Convert sync SQLite URL to async if needed
-if DATABASE_URL.startswith("sqlite:///"):
-    DATABASE_URL = DATABASE_URL.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
+POSTGRE_PORT = os.getenv("POSTGRE_PORT", "5432")
 
-# Create async engine
+POSTGRE_USER = os.getenv("POSTGRE_USER")
+if not POSTGRE_USER:
+    raise ValueError("POSTGRE_USER is not set")
+
+POSTGRE_PASSWORD = os.getenv("POSTGRE_PASSWORD")
+if not POSTGRE_PASSWORD:
+    raise ValueError("POSTGRE_PASSWORD is not set")
+
+POSTGRE_DB = os.getenv("POSTGRE_DB")
+if not POSTGRE_DB:
+    raise ValueError("POSTGRE_DB is not set")
+
+# Use psycopg (version 3) as the async PostgreSQL driver
+DATABASE_URL = f"postgresql+psycopg://{POSTGRE_USER}:{POSTGRE_PASSWORD}@{POSTGRE_HOST}:{POSTGRE_PORT}/{POSTGRE_DB}"
+
 async_engine = create_async_engine(DATABASE_URL, echo=False)
 
-# Create async session factory
 AsyncSessionLocal = async_sessionmaker(
     async_engine, class_=AsyncSession, expire_on_commit=False
 )
