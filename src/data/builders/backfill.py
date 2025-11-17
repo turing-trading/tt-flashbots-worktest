@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.blocks.db import BlockDB
 from src.data.builders.db import BuilderIdentifiersCheckpoints, BuilderIdentifiersDB
+from src.data.relays.db import RelaysPayloadsDB
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
 
@@ -60,11 +61,72 @@ class BackfillBuilderIdentifiers:
             bytes_data = binascii.unhexlify(hex_str)
             # Decode as UTF-8, strip null bytes
             builder_name = bytes_data.decode("utf-8", errors="ignore").strip("\x00")
+
+            # Clean up the builder name
+            builder_name = self._clean_builder_name(builder_name)
+
             # Return cleaned string or 'unknown' if empty
-            return builder_name.strip() if builder_name.strip() else "unknown"
+            return builder_name if builder_name else "unknown"
         except Exception:
             # If parsing fails, return 'unknown'
             return "unknown"
+
+    def _clean_builder_name(self, name: str) -> str:
+        """Clean builder name by removing emojis and extracting domain/pool names.
+
+        Args:
+            name: Raw builder name string
+
+        Returns:
+            Cleaned builder name
+        """
+        import re
+
+        # Remove emojis and other non-ASCII characters (keep only printable ASCII)
+        # This removes characters like ✨, 🚀, etc.
+        cleaned = "".join(c for c in name if ord(c) < 128 and c.isprintable())
+
+        # Strip whitespace
+        cleaned = cleaned.strip()
+
+        # First, try to extract content from parentheses (e.g., "Quasar (quasar.win)" -> "quasar.win")
+        paren_match = re.search(r"\(([^)]+)\)", cleaned)
+        if paren_match:
+            cleaned = paren_match.group(1)
+
+        # Extract domain/pool names from slash-separated patterns like "EU2/pool.binance.com/"
+        # Take the part after the last "/" that contains a domain or name
+        if "/" in cleaned:
+            # Split by "/" and get the last non-empty part
+            parts = [p for p in cleaned.split("/") if p]
+            if parts:
+                # Take the last part which should be the domain/pool name
+                cleaned = parts[-1]
+
+        # For domain-like strings (containing dots), extract just the domain part
+        # This handles "poolin.com!c" -> "poolin.com", "BTC.com#" -> "BTC.com", "poolin.comHN" -> "poolin.com"
+        if "." in cleaned:
+            # Match common TLDs precisely - the pattern stops at the TLD
+            # No \b needed because we just want to match up to and including the TLD
+            tld_pattern = r"([a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*\.(?:com|net|org|io|win|xyz|eth|pool|info|co|uk|de|fr|cn|jp))"
+            domain_match = re.match(tld_pattern, cleaned)
+            if domain_match:
+                cleaned = domain_match.group(1)
+
+        # Remove trailing and leading special characters (but keep dots, hyphens, underscores in the middle)
+        cleaned = re.sub(r"^[^a-zA-Z0-9]+|[^a-zA-Z0-9.]+$", "", cleaned)
+
+        # Remove trailing numbers and mixed alphanumeric suffixes (e.g., "speth22" -> "speth", "speth03e" -> "speth")
+        cleaned = re.sub(r"[0-9]+[a-z0-9]*$", "", cleaned)
+
+        # Final cleanup: strip any remaining whitespace
+        cleaned = cleaned.strip()
+
+        # If the result is a single character or empty, return "unknown"
+        if len(cleaned) <= 1:
+            return "unknown"
+
+        return cleaned
 
     async def _get_checkpoint(self, session: AsyncSession) -> tuple[int, int] | None:
         """Get the latest checkpoint.
@@ -107,12 +169,15 @@ class BackfillBuilderIdentifiers:
         await session.commit()
 
     async def _get_block_range(self, session: AsyncSession) -> tuple[int, int]:
-        """Get the min and max block numbers from blocks table.
+        """Get the min and max block numbers from relays_payloads table.
 
         Returns:
             Tuple of (min_block, max_block)
         """
-        stmt = select(func.min(BlockDB.number), func.max(BlockDB.number))
+        stmt = select(
+            func.min(RelaysPayloadsDB.block_number),
+            func.max(RelaysPayloadsDB.block_number),
+        )
         result = await session.execute(stmt)
         min_block, max_block = result.one()
         return (min_block or 0, max_block or 0)
@@ -133,39 +198,63 @@ class BackfillBuilderIdentifiers:
         Returns:
             Number of unique builder identifiers found
         """
-        # Get distinct extra_data values in this range
+        # Join relays_payloads with blocks to get builder_pubkey and extra_data
         stmt = (
-            select(BlockDB.extra_data)
-            .where(BlockDB.number >= start_block)
-            .where(BlockDB.number <= end_block)
+            select(
+                RelaysPayloadsDB.builder_pubkey,
+                BlockDB.extra_data,
+            )
+            .select_from(RelaysPayloadsDB)
+            .join(BlockDB, RelaysPayloadsDB.block_number == BlockDB.number)
+            .where(RelaysPayloadsDB.block_number >= start_block)
+            .where(RelaysPayloadsDB.block_number <= end_block)
+            .where(RelaysPayloadsDB.builder_pubkey.isnot(None))
             .where(BlockDB.extra_data.isnot(None))
             .where(BlockDB.extra_data != "")
             .distinct()
         )
 
         result = await session.execute(stmt)
-        extra_data_values = [row[0] for row in result.fetchall()]
+        rows = result.fetchall()
 
-        if not extra_data_values:
+        if not rows:
             return 0
 
-        # Parse builder names and prepare data, filtering out entries with null bytes
-        identifiers_data = []
-        for extra_data in extra_data_values:
-            # Skip if extra_data contains null bytes (PostgreSQL doesn't support them in text fields)
-            if "\x00" in extra_data:
+        # Parse builder names and prepare data
+        # Use a dict to deduplicate by builder_pubkey (keep the first occurrence)
+        identifiers_dict = {}
+        for builder_pubkey, extra_data in rows:
+            # Skip if we've already processed this builder_pubkey
+            if builder_pubkey in identifiers_dict:
                 continue
 
-            builder_name = self._parse_builder_name(extra_data)
-            identifiers_data.append(
-                {"extra_data": extra_data, "builder_name": builder_name}
-            )
+            # Replace null bytes in extra_data (PostgreSQL doesn't support them in text fields)
+            cleaned_extra_data = extra_data.replace("\x00", "")
+
+            # Skip if empty after cleaning
+            if not cleaned_extra_data or cleaned_extra_data == "0x":
+                continue
+
+            # Parse builder name from cleaned data and also strip null bytes
+            builder_name = self._parse_builder_name(cleaned_extra_data).replace("\x00", "")
+
+            # Skip if builder_name is empty after cleaning
+            if not builder_name:
+                continue
+
+            identifiers_dict[builder_pubkey] = builder_name
+
+        # Convert dict to list of dicts for insertion
+        identifiers_data = [
+            {"builder_pubkey": pubkey, "builder_name": name}
+            for pubkey, name in identifiers_dict.items()
+        ]
 
         # Upsert into database
         if identifiers_data:
             stmt = pg_insert(BuilderIdentifiersDB).values(identifiers_data)
             stmt = stmt.on_conflict_do_update(
-                index_elements=["extra_data"],
+                index_elements=["builder_pubkey"],
                 set_={"builder_name": stmt.excluded.builder_name},
             )
             await session.execute(stmt)

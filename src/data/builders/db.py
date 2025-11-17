@@ -16,9 +16,9 @@ class BuilderIdentifiersCheckpoints(Base):
 
 
 class BuilderIdentifiersDB(Base):
-    """Builder identifiers extracted from block extra_data."""
+    """Builder identifiers mapping from builder_pubkey to builder_name."""
 
     __tablename__ = "builders_identifiers"
 
-    extra_data = Column(String, primary_key=True, index=True)
+    builder_pubkey = Column(String(98), primary_key=True, index=True)
     builder_name = Column(String, nullable=False)
