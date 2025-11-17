@@ -1,0 +1,242 @@
+"""Backfill PBS analysis data by aggregating from blocks, proposers_balance, and relays_payloads."""
+
+from asyncio import run
+
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TaskID,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.analysis.db import AnalysisPBSDB
+from src.data.blocks.db import BlockDB
+from src.data.proposers.db import ProposerBalancesDB
+from src.data.relays.db import RelaysPayloadsDB
+from src.helpers.db import AsyncSessionLocal, Base, async_engine
+from src.helpers.logging import get_logger
+
+
+class BackfillAnalysisPBS:
+    """Backfill PBS analysis data."""
+
+    def __init__(self, batch_size: int = 10_000):
+        """Initialize backfill.
+
+        Args:
+            batch_size: Number of blocks to process per batch
+        """
+        self.batch_size = batch_size
+        self.logger = get_logger("backfill_analysis_pbs", log_level="INFO")
+        self.console = Console()
+
+    async def create_tables(self) -> None:
+        """Create tables if they don't exist."""
+        async with async_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    async def _get_missing_blocks(self, session: AsyncSession) -> list[tuple[int, ...]]:
+        """Get block numbers that exist in blocks table but not in analysis_pbs.
+
+        Returns:
+            List of block numbers that need to be processed
+        """
+        # Find blocks that don't exist in analysis_pbs
+        stmt = (
+            select(BlockDB.number)
+            .outerjoin(AnalysisPBSDB, BlockDB.number == AnalysisPBSDB.block_number)
+            .where(AnalysisPBSDB.block_number.is_(None))
+            .order_by(BlockDB.number.desc())
+        )
+
+        result = await session.execute(stmt)
+        missing_blocks = result.fetchall()
+        return missing_blocks
+
+    async def _get_block_count(self, session: AsyncSession) -> int:
+        """Get total count of blocks in the blocks table."""
+        stmt = select(func.count()).select_from(BlockDB)
+        result = await session.execute(stmt)
+        return result.scalar_one()
+
+    async def _aggregate_block_data(
+        self, session: AsyncSession, block_numbers: list[int]
+    ) -> list[dict]:
+        """Aggregate data from blocks, proposers_balance, and relays_payloads for given block numbers.
+
+        Args:
+            session: Database session
+            block_numbers: List of block numbers to aggregate
+
+        Returns:
+            List of dictionaries with aggregated data
+        """
+        # Build the aggregation query
+        stmt = (
+            select(
+                BlockDB.number.label("block_number"),
+                BlockDB.timestamp.label("block_timestamp"),
+                ProposerBalancesDB.balance_increase.label("builder_balance_increase"),
+                func.array_agg(RelaysPayloadsDB.relay).label("relays"),
+                func.max(RelaysPayloadsDB.value).label("proposer_subsidy"),
+            )
+            .select_from(BlockDB)
+            .outerjoin(
+                ProposerBalancesDB,
+                BlockDB.number == ProposerBalancesDB.block_number,
+            )
+            .outerjoin(
+                RelaysPayloadsDB, BlockDB.number == RelaysPayloadsDB.block_number
+            )
+            .where(BlockDB.number.in_(block_numbers))
+            .group_by(
+                BlockDB.number,
+                BlockDB.timestamp,
+                ProposerBalancesDB.balance_increase,
+            )
+        )
+
+        result = await session.execute(stmt)
+        rows = result.fetchall()
+
+        # Convert to dictionaries
+        aggregated_data = []
+        for row in rows:
+            # Filter out None values from relays array
+            relays = [r for r in (row.relays or []) if r is not None]
+            aggregated_data.append(
+                {
+                    "block_number": row.block_number,
+                    "block_timestamp": row.block_timestamp,
+                    "builder_balance_increase": row.builder_balance_increase,
+                    "relays": relays if relays else None,
+                    "proposer_subsidy": row.proposer_subsidy,
+                }
+            )
+
+        return aggregated_data
+
+    async def _store_analysis_data(
+        self, session: AsyncSession, data: list[dict]
+    ) -> None:
+        """Store aggregated analysis data in the database.
+
+        Args:
+            session: Database session
+            data: List of aggregated data dictionaries
+        """
+        if not data:
+            return
+
+        # Upsert data into analysis_pbs table
+        stmt = pg_insert(AnalysisPBSDB).values(data)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["block_number"],
+            set_={
+                AnalysisPBSDB.block_timestamp: stmt.excluded.block_timestamp,
+                AnalysisPBSDB.builder_balance_increase: stmt.excluded.builder_balance_increase,
+                AnalysisPBSDB.relays: stmt.excluded.relays,
+                AnalysisPBSDB.proposer_subsidy: stmt.excluded.proposer_subsidy,
+            },
+        )
+
+        await session.execute(stmt)
+        await session.commit()
+
+    async def _process_batch(
+        self,
+        session: AsyncSession,
+        block_numbers: list[int],
+        progress: Progress,
+        task_id: TaskID,
+    ) -> int:
+        """Process a batch of blocks.
+
+        Args:
+            session: Database session
+            block_numbers: List of block numbers to process
+            progress: Progress display
+            task_id: Progress task ID
+
+        Returns:
+            Number of blocks processed
+        """
+        # Aggregate data for this batch
+        aggregated_data = await self._aggregate_block_data(session, block_numbers)
+
+        # Store aggregated data
+        await self._store_analysis_data(session, aggregated_data)
+
+        # Update progress
+        progress.update(task_id, advance=len(block_numbers))
+
+        return len(block_numbers)
+
+    async def run(self) -> None:
+        """Run the backfill process."""
+        await self.create_tables()
+
+        async with AsyncSessionLocal() as session:
+            # Get total block count
+            total_blocks = await self._get_block_count(session)
+
+            # Get missing blocks
+            missing_blocks_result = await self._get_missing_blocks(session)
+            missing_blocks = [row[0] for row in missing_blocks_result]
+
+            if not missing_blocks:
+                self.console.print(
+                    "[yellow]No missing blocks to process - analysis_pbs is up to date[/yellow]"
+                )
+                return
+
+            total_missing = len(missing_blocks)
+
+            self.console.print("[bold blue]Backfilling PBS Analysis Data[/bold blue]")
+            self.console.print(
+                f"[cyan]Total blocks in database: {total_blocks:,}[/cyan]"
+            )
+            self.console.print(
+                f"[cyan]Missing blocks to process: {total_missing:,}[/cyan]\n"
+            )
+
+            # Create progress display
+            progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TextColumn("•"),
+                TimeElapsedColumn(),
+                console=self.console,
+            )
+
+            total_processed = 0
+
+            with progress:
+                task_id = progress.add_task("Processing blocks", total=total_missing)
+
+                # Process in batches
+                for i in range(0, total_missing, self.batch_size):
+                    batch = missing_blocks[i : i + self.batch_size]
+                    processed = await self._process_batch(
+                        session, batch, progress, task_id
+                    )
+                    total_processed += processed
+
+            self.console.print(
+                f"\n[bold green]✓ Backfill completed[/bold green] - "
+                f"Processed {total_processed:,} blocks"
+            )
+
+
+if __name__ == "__main__":
+    backfill = BackfillAnalysisPBS(batch_size=10000)
+    run(backfill.run())
