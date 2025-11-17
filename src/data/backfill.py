@@ -1,6 +1,6 @@
 """Backfill data from relays."""
 
-from asyncio import create_task, gather, run
+from asyncio import CancelledError, create_task, gather, run
 
 import httpx
 from pydantic import TypeAdapter
@@ -16,10 +16,7 @@ from src.data.db import (
     SignedValidatorRegistrationDB,
     async_engine,
 )
-from src.data.models import (
-    SignedValidatorRegistration,
-    SignedValidatorRegistrationPayload,
-)
+from src.data.models import SignedValidatorRegistration
 from src.helpers.logging import get_logger
 
 
@@ -148,40 +145,70 @@ class BackfillProposerPayloadDelivered:
         async with async_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-    async def backfill(self, relay: str, slot_to: int) -> None:
-        """Backfill proposer payload delivered data."""
+    async def backfill(self, relay: str, latest_slot: int) -> None:
+        """Backfill proposer payload delivered data.
+
+        The API returns data in descending slot order (newest first).
+        The cursor parameter acts as an upper bound (exclusive) - it returns slots < cursor.
+        Without cursor, it returns the most recent slots.
+        """
         async with AsyncSessionLocal() as session:
             # Get existing checkpoint if available
             checkpoint = await self._get_checkpoint(session, relay)
             if checkpoint is None:
-                slot_from = 0
+                # First run: start from the latest slot and work backwards
+                current_cursor = latest_slot
+                min_slot_seen = latest_slot
             else:
-                slot_from = checkpoint[1] + 1
+                # Continue from where we left off (go further back in history)
+                current_cursor = checkpoint[0]
+                min_slot_seen = checkpoint[0]
 
             # Use async httpx client for requests
             async with httpx.AsyncClient() as client:
                 total_registrations = 0
-                last_slot = slot_from
 
-                # Fetch data from relay
-                for slot_temp in range(slot_from, slot_to, self.limit):
-                    registrations = await self._fetch_data(client, relay, slot_temp)
-                    if registrations:
-                        await self._store_registrations(session, registrations, relay)
-                        total_registrations += len(registrations)
-                        last_slot = min(slot_temp + self.limit, slot_to)
-                        await self._update_checkpoint(
-                            session,
-                            relay,
-                            slot_temp,
-                            last_slot,
-                        )
-                    return
+                # Fetch data from relay, paginating backwards through history
+                while True:
+                    registrations = await self._fetch_data(
+                        client, relay, current_cursor
+                    )
+
+                    if not registrations:
+                        # No more data available
+                        break
+
+                    await self._store_registrations(session, registrations, relay)
+                    total_registrations += len(registrations)
+
+                    # Find the minimum slot in this batch
+                    min_slot_in_batch = min(reg.slot for reg in registrations)
+                    max_slot_in_batch = max(reg.slot for reg in registrations)
+
+                    # Update checkpoint with the range we've covered
+                    min_slot_seen = min(min_slot_seen, min_slot_in_batch)
+                    await self._update_checkpoint(
+                        session,
+                        relay,
+                        min_slot_seen,
+                        latest_slot,
+                    )
+
+                    self.logger.info(
+                        f"Fetched {len(registrations)} registrations from {relay} "
+                        f"(slots {min_slot_in_batch} to {max_slot_in_batch})"
+                    )
+
+                    # Move cursor to continue pagination backwards
+                    current_cursor = min_slot_in_batch
+
+                    # Stop if we got fewer results than limit (likely end of available data)
+                    if len(registrations) < self.limit:
+                        break
 
                 if total_registrations > 0:
                     self.logger.info(
-                        f"Backfilled {total_registrations} registrations from {relay} "
-                        f"(slots {slot_from} to {last_slot})"
+                        f"Backfilled {total_registrations} total registrations from {relay}"
                     )
                 else:
                     self.logger.info(f"No new registrations from {relay}")
@@ -191,13 +218,22 @@ class BackfillProposerPayloadDelivered:
         await self.create_tables()
 
         latest_slot = await self._get_latest_slot()
-        self.logger.info(f"Running backfill for relay: {RELAYS[-1:]}")
+        latest_slot = int(latest_slot - (60 * 60 / 12))  # Security buffer of 1 hour
+
+        self.logger.info(f"Running backfill for {len(RELAYS)} relays")
         self.logger.info(f"Latest slot: {latest_slot}")
         self.logger.info(f"Limit: {self.limit}")
-        tasks = [
-            create_task(self.backfill(relay, latest_slot)) for relay in RELAYS[-1:]
-        ]
-        await gather(*tasks)
+        tasks = [create_task(self.backfill(relay, latest_slot)) for relay in RELAYS]
+
+        try:
+            await gather(*tasks)
+        except CancelledError:
+            self.logger.info("Backfill cancelled")
+        except Exception as e:
+            self.logger.error(f"Error running backfill: {e}")
+            raise e
+        finally:
+            self.logger.info("Backfill completed")
 
 
 if __name__ == "__main__":

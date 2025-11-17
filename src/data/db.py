@@ -3,7 +3,7 @@
 import os
 
 from dotenv import load_dotenv
-from sqlalchemy import BigInteger, Column, Integer, String
+from sqlalchemy import BigInteger, Column, Integer, Numeric, String
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
@@ -32,12 +32,19 @@ if not POSTGRE_DB:
     raise ValueError("POSTGRE_DB is not set")
 
 # Use psycopg (version 3) as the async PostgreSQL driver
-DATABASE_URL = f"postgresql+psycopg://{POSTGRE_USER}:{POSTGRE_PASSWORD}@{POSTGRE_HOST}:{POSTGRE_PORT}/{POSTGRE_DB}"
+DATABASE_URL = (
+    "postgresql+psycopg://"
+    f"{POSTGRE_USER}:{POSTGRE_PASSWORD}"
+    f"@{POSTGRE_HOST}:{POSTGRE_PORT}"
+    f"/{POSTGRE_DB}"
+)
 
 async_engine = create_async_engine(DATABASE_URL, echo=False)
 
 AsyncSessionLocal = async_sessionmaker(
-    async_engine, class_=AsyncSession, expire_on_commit=False
+    async_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
 )
 
 
@@ -46,7 +53,7 @@ class SignedValidatorRegistrationCheckpoints(Base):
 
     __tablename__ = "signed_validator_registrations_checkpoints"
 
-    relay = Column(String, primary_key=True, index=True)
+    relay = Column(String(255), primary_key=True, index=True)
     from_slot = Column(Integer, primary_key=False)
     to_slot = Column(Integer, primary_key=False)
 
@@ -56,15 +63,15 @@ class SignedValidatorRegistrationDB(Base):
 
     __tablename__ = "signed_validator_registrations"
 
-    slot = Column(Integer, primary_key=True)
-    relay = Column(String, primary_key=True, index=True)
-    parent_hash = Column(String, primary_key=False)
-    block_hash = Column(String, primary_key=False)
-    builder_pubkey = Column(String, primary_key=False)
-    proposer_pubkey = Column(String, primary_key=False)
-    proposer_fee_recipient = Column(String, primary_key=False)
-    gas_limit = Column(BigInteger, primary_key=False)
-    gas_used = Column(BigInteger, primary_key=False)
-    value = Column(BigInteger, primary_key=False)
+    slot = Column(BigInteger, primary_key=True)
+    relay = Column(String(255), primary_key=True, index=True)
+    parent_hash = Column(String(66), primary_key=False)
+    block_hash = Column(String(66), primary_key=False)
+    builder_pubkey = Column(String(98), primary_key=False)
+    proposer_pubkey = Column(String(98), primary_key=False)
+    proposer_fee_recipient = Column(String(42), primary_key=False)
+    gas_limit = Column(Numeric, primary_key=False)
+    gas_used = Column(Numeric, primary_key=False)
+    value = Column(Numeric, primary_key=False)
     block_number = Column(BigInteger, primary_key=False)
     num_tx = Column(Integer, primary_key=False)
