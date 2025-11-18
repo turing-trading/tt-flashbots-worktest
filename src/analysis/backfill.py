@@ -27,7 +27,7 @@ from src.data.relays.db import RelaysPayloadsDB
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
 
-START_DATE = datetime(2025, 6, 1, 0, 0, 0)
+START_DATE = datetime(2022, 1, 1, 0, 0, 0)
 
 
 class BackfillAnalysisPBS:
@@ -51,7 +51,6 @@ class BackfillAnalysisPBS:
     async def _get_missing_blocks(self, session: AsyncSession) -> list[tuple[int, ...]]:
         """Get block numbers that exist in blocks table but not in analysis_pbs.
 
-        Only processes blocks from June 2025 onwards.
 
         Returns:
             List of block numbers that need to be processed
@@ -74,7 +73,7 @@ class BackfillAnalysisPBS:
         return list(missing_blocks)  # type: ignore
 
     async def _get_block_count(self, session: AsyncSession) -> int:
-        """Get total count of blocks in the blocks table from June 2025 onwards."""
+        """Get total count of blocks in the blocks table from START_DATE onwards."""
         stmt = (
             select(func.count())
             .select_from(BlockDB)
@@ -251,7 +250,6 @@ class BackfillAnalysisPBS:
             total_missing = len(missing_blocks)
 
             self.console.print("[bold blue]Backfilling PBS Analysis Data[/bold blue]")
-            self.console.print("[cyan]Date range: June 2025 onwards[/cyan]")
             self.console.print(f"[cyan]Total blocks in range: {total_blocks:,}[/cyan]")
             self.console.print(
                 f"[cyan]Missing blocks to process: {total_missing:,}[/cyan]\n"
