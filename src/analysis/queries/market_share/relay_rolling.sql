@@ -38,10 +38,10 @@ WITH relay_blocks AS (
         $__timeGroup(block_timestamp, $__interval) as time,
         UNNEST(relays) as relay,
         block_number
-    FROM analysis_pbs
+    FROM analysis_pbs_v2
     WHERE
         $__timeFilter(block_timestamp)
-        AND relays IS NOT NULL
+        AND NOT is_block_vanilla
 ),
 relay_counts AS (
     SELECT

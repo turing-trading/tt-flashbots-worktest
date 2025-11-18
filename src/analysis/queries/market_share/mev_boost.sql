@@ -15,18 +15,14 @@
 WITH block_types AS (
     SELECT
         CASE
-            WHEN relays IS NULL OR array_length(relays, 1) IS NULL THEN 'vanilla'
+            WHEN is_block_vanilla THEN 'vanilla'
             ELSE 'mev_boost'
         END as block_type,
         COUNT(*) as block_count
-    FROM analysis_pbs
+    FROM analysis_pbs_v2
     WHERE
         $__timeFilter(block_timestamp)
-    GROUP BY
-        CASE
-            WHEN relays IS NULL OR array_length(relays, 1) IS NULL THEN 'vanilla'
-            ELSE 'mev_boost'
-        END
+    GROUP BY is_block_vanilla
 ),
 total_blocks AS (
     SELECT SUM(block_count) as total

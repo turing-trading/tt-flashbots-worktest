@@ -37,13 +37,13 @@
 WITH builder_counts AS (
     SELECT
         $__timeGroup(block_timestamp, $__interval) as time,
-        COALESCE(builder_name, 'unknown') as builder_name,
+        builder_name as builder_name,
         COUNT(*) as blocks_built
-    FROM analysis_pbs
+    FROM analysis_pbs_v2
     WHERE
         $__timeFilter(block_timestamp)
-        AND relays IS NOT NULL
-        AND array_length(relays, 1) IS NOT NULL
+        AND NOT is_block_vanilla
+        
     GROUP BY time, builder_name
 ),
 -- Identify top 9 builders across the entire time range

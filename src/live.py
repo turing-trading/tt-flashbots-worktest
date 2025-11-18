@@ -235,7 +235,7 @@ class LiveBlockStreamer:
     async def run(self) -> None:
         """Run the live block streamer coordinator."""
         # Import module processors
-        from src.analysis.live import LiveAnalysisProcessor
+        from src.analysis.live import LiveAnalysisProcessorV2
         from src.data.blocks.live import LiveBlockProcessor
         from src.data.builders.live import LiveBuilderProcessor
         from src.data.proposers.live import LiveProposerProcessor
@@ -251,7 +251,7 @@ class LiveBlockStreamer:
         relays_processor = LiveRelayProcessor(self.relays_queue)
         proposers_processor = LiveProposerProcessor(self.proposers_queue)
         builders_processor = LiveBuilderProcessor(self.builders_queue)
-        analysis_processor = LiveAnalysisProcessor(self.analysis_queue)
+        analysis_processor = LiveAnalysisProcessorV2(self.analysis_queue)
 
         # Start all tasks
         await asyncio.gather(

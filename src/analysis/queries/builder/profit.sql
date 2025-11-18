@@ -21,16 +21,14 @@
 
 WITH builder_profits AS (
     SELECT
-        COALESCE(builder_name, 'unknown') as builder_name,
-        SUM(COALESCE(builder_balance_increase, 0)) as total_profit_eth,
-        AVG(COALESCE(builder_balance_increase, 0)) as avg_profit_eth,
+        builder_name,
+        SUM(builder_balance_increase) as total_profit_eth,
+        AVG(builder_balance_increase) as avg_profit_eth,
         COUNT(*) as block_count
-    FROM analysis_pbs
+    FROM analysis_pbs_v2
     WHERE
         $__timeFilter(block_timestamp)
-        AND builder_balance_increase IS NOT NULL
-        AND relays IS NOT NULL
-        AND array_length(relays, 1) IS NOT NULL
+        AND NOT is_block_vanilla
     GROUP BY builder_name
 ),
 top_builders AS (

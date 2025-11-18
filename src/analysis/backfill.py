@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.analysis.constants import clean_builder_name
-from src.analysis.db import AnalysisPBSDB
+from src.analysis.db import AnalysisPBSV2DB
 from src.data.blocks.db import BlockDB
 from src.data.builders.db import BuilderIdentifiersDB
 from src.data.proposers.db import ProposerBalancesDB
@@ -31,8 +31,8 @@ from src.helpers.parsers import wei_to_eth
 START_DATE = datetime(2022, 1, 1, 0, 0, 0)
 
 
-class BackfillAnalysisPBS:
-    """Backfill PBS analysis data."""
+class BackfillAnalysisPBSV2:
+    """Backfill PBS analysis data V2 with computed fields."""
 
     def __init__(self, batch_size: int = 10_000):
         """Initialize backfill.
@@ -50,15 +50,15 @@ class BackfillAnalysisPBS:
             await conn.run_sync(Base.metadata.create_all)
 
     async def _get_missing_blocks(self, session: AsyncSession) -> list[tuple[int, ...]]:
-        """Get block numbers that exist in blocks table but not in analysis_pbs.
+        """Get block numbers that exist in blocks table but not in analysis_pbs_v2.
 
 
         Returns:
             List of block numbers that need to be processed
         """
         # Use NOT EXISTS for better performance on large tables
-        subquery = select(AnalysisPBSDB.block_number).where(
-            AnalysisPBSDB.block_number == BlockDB.number
+        subquery = select(AnalysisPBSV2DB.block_number).where(
+            AnalysisPBSV2DB.block_number == BlockDB.number
         )
 
         stmt = (
@@ -138,19 +138,29 @@ class BackfillAnalysisPBS:
         for row in rows:
             # Filter out None values from relays array
             relays = [r for r in (row.relays or []) if r is not None]
+            relays_list = relays if relays else None
 
-            # Convert Wei to ETH using helper
-            builder_balance_increase = wei_to_eth(row.builder_balance_increase)
-            proposer_subsidy = wei_to_eth(row.proposer_subsidy)
+            # Calculate computed fields
+            n_relays = len(relays) if relays else 0
+            is_block_vanilla = n_relays == 0
+
+            # Convert Wei to ETH using helper with defaults
+            builder_balance_increase = wei_to_eth(row.builder_balance_increase) or 0.0
+            proposer_subsidy = wei_to_eth(row.proposer_subsidy) or 0.0
+            total_value = builder_balance_increase + proposer_subsidy
+            builder_name = clean_builder_name(row.builder_name) or "unknown"
 
             aggregated_data.append(
                 {
                     "block_number": row.block_number,
                     "block_timestamp": row.block_timestamp,
                     "builder_balance_increase": builder_balance_increase,
-                    "relays": relays if relays else None,
                     "proposer_subsidy": proposer_subsidy,
-                    "builder_name": clean_builder_name(row.builder_name),
+                    "total_value": total_value,
+                    "is_block_vanilla": is_block_vanilla,
+                    "n_relays": n_relays,
+                    "relays": relays_list,
+                    "builder_name": builder_name,
                 }
             )
 
@@ -171,16 +181,19 @@ class BackfillAnalysisPBS:
 
         self.logger.debug(f"Storing {len(data)} rows...")
 
-        # Upsert data into analysis_pbs table
-        stmt = pg_insert(AnalysisPBSDB).values(data)
+        # Upsert data into analysis_pbs_v2 table
+        stmt = pg_insert(AnalysisPBSV2DB).values(data)
         stmt = stmt.on_conflict_do_update(
             index_elements=["block_number"],
             set_={
-                AnalysisPBSDB.block_timestamp: stmt.excluded.block_timestamp,
-                AnalysisPBSDB.builder_balance_increase: stmt.excluded.builder_balance_increase,
-                AnalysisPBSDB.relays: stmt.excluded.relays,
-                AnalysisPBSDB.proposer_subsidy: stmt.excluded.proposer_subsidy,
-                AnalysisPBSDB.builder_name: stmt.excluded.builder_name,
+                AnalysisPBSV2DB.block_timestamp: stmt.excluded.block_timestamp,
+                AnalysisPBSV2DB.builder_balance_increase: stmt.excluded.builder_balance_increase,
+                AnalysisPBSV2DB.proposer_subsidy: stmt.excluded.proposer_subsidy,
+                AnalysisPBSV2DB.total_value: stmt.excluded.total_value,
+                AnalysisPBSV2DB.is_block_vanilla: stmt.excluded.is_block_vanilla,
+                AnalysisPBSV2DB.n_relays: stmt.excluded.n_relays,
+                AnalysisPBSV2DB.relays: stmt.excluded.relays,
+                AnalysisPBSV2DB.builder_name: stmt.excluded.builder_name,
             },
         )
 
@@ -236,7 +249,7 @@ class BackfillAnalysisPBS:
 
             if not missing_blocks:
                 self.console.print(
-                    "[yellow]No missing blocks to process - analysis_pbs is up to date[/yellow]"
+                    "[yellow]No missing blocks to process - analysis_pbs_v2 is up to date[/yellow]"
                 )
                 return
 
@@ -281,5 +294,7 @@ class BackfillAnalysisPBS:
 
 
 if __name__ == "__main__":
-    backfill = BackfillAnalysisPBS(batch_size=10000)
+    # Batch size limited to 5000 to avoid PostgreSQL's 65535 parameter limit
+    # (5000 blocks * 9 fields = 45000 parameters)
+    backfill = BackfillAnalysisPBSV2(batch_size=5000)
     run(backfill.run())

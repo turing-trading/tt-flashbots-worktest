@@ -26,23 +26,20 @@ WITH config AS (
 -- Compute histogram bins once
 histogram_data AS (
     SELECT histogram(
-        COALESCE(builder_balance_increase, 0)
-        + COALESCE(proposer_subsidy, 0),
+        total_value,
         c.hist_min,
         c.hist_max,
         c.hist_nbuckets
     ) AS buckets,
-    c.hist_min,
-    c.hist_max,
-    c.hist_nbuckets
-    FROM analysis_pbs
+    MAX(c.hist_min) AS hist_min,
+    MAX(c.hist_max) AS hist_max,
+    MAX(c.hist_nbuckets) AS hist_nbuckets
+    FROM analysis_pbs_v2
     CROSS JOIN config c
     WHERE
         $__timeFilter(block_timestamp)
-        AND relays IS NOT NULL
-        AND array_length(relays, 1) IS NOT NULL
-        AND (builder_balance_increase IS NOT NULL
-             OR proposer_subsidy IS NOT NULL)
+        AND NOT is_block_vanilla
+    GROUP BY c.hist_min, c.hist_max, c.hist_nbuckets
 ),
 
 -- Precompute bucket boundaries

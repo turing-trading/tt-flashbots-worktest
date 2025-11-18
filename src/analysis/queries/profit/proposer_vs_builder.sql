@@ -25,16 +25,16 @@
 
 WITH profit_data AS (
     SELECT
-        SUM(COALESCE(proposer_subsidy, 0)) as total_proposer_profit,
-        SUM(COALESCE(builder_balance_increase, 0)) as total_builder_profit,
-        AVG(COALESCE(proposer_subsidy, 0)) as avg_proposer_profit,
-        AVG(COALESCE(builder_balance_increase, 0)) as avg_builder_profit,
+        SUM(proposer_subsidy) as total_proposer_profit,
+        SUM(builder_balance_increase) as total_builder_profit,
+        AVG(proposer_subsidy) as avg_proposer_profit,
+        AVG(builder_balance_increase) as avg_builder_profit,
         COUNT(*) as block_count
-    FROM analysis_pbs
+    FROM analysis_pbs_v2
     WHERE
         $__timeFilter(block_timestamp)
-        AND relays IS NOT NULL
-        AND array_length(relays, 1) IS NOT NULL
+        AND NOT is_block_vanilla
+        
 )
 SELECT
     'Proposer Profit' as profit_type,

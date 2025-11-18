@@ -28,18 +28,15 @@
 
 WITH builder_overbids AS (
     SELECT
-        COALESCE(builder_name, 'unknown') as builder_name,
-        AVG(COALESCE(proposer_subsidy, 0) - COALESCE(builder_balance_increase, 0)) as avg_overbid_eth,
-        SUM(COALESCE(proposer_subsidy, 0) - COALESCE(builder_balance_increase, 0)) as total_overbid_eth,
-        COUNT(*) FILTER (WHERE COALESCE(proposer_subsidy, 0) > COALESCE(builder_balance_increase, 0)) as overbid_block_count,
+        builder_name,
+        AVG(proposer_subsidy - builder_balance_increase) as avg_overbid_eth,
+        SUM(proposer_subsidy - builder_balance_increase) as total_overbid_eth,
+        COUNT(*) FILTER (WHERE proposer_subsidy > builder_balance_increase) as overbid_block_count,
         COUNT(*) as total_block_count
-    FROM analysis_pbs
+    FROM analysis_pbs_v2
     WHERE
         $__timeFilter(block_timestamp)
-        AND relays IS NOT NULL
-        AND array_length(relays, 1) IS NOT NULL
-        AND proposer_subsidy IS NOT NULL
-        AND builder_balance_increase IS NOT NULL
+        AND NOT is_block_vanilla
     GROUP BY builder_name
 ),
 top_builders AS (

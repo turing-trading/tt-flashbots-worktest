@@ -11,8 +11,8 @@ from typing import Any
 from sqlalchemy import func, select
 
 from src.analysis.constants import clean_builder_name
-from src.analysis.db import AnalysisPBSDB
-from src.analysis.models import AnalysisPBS
+from src.analysis.db import AnalysisPBSV2DB
+from src.analysis.models import AnalysisPBSV2
 from src.data.blocks.db import BlockDB
 from src.data.builders.db import BuilderIdentifiersDB
 from src.data.proposers.db import ProposerBalancesDB
@@ -24,8 +24,8 @@ from src.helpers.parsers import parse_hex_block_number, parse_hex_timestamp, wei
 logger = get_logger(__name__)
 
 
-class LiveAnalysisProcessor:
-    """Processes live block headers and creates PBS analysis records."""
+class LiveAnalysisProcessorV2:
+    """Processes live block headers and creates PBS analysis records (V2 with computed fields)."""
 
     def __init__(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
         """Initialize the live analysis processor.
@@ -36,14 +36,14 @@ class LiveAnalysisProcessor:
         self.queue = queue
         self.analyses_processed = 0
 
-    async def aggregate_block_data(self, block_number: int) -> AnalysisPBS | None:
+    async def aggregate_block_data(self, block_number: int) -> AnalysisPBSV2 | None:
         """Aggregate data from all tables for PBS analysis.
 
         Args:
             block_number: Block number to aggregate.
 
         Returns:
-            AnalysisPBS model or None if aggregation failed.
+            AnalysisPBSV2 model or None if aggregation failed.
         """
         try:
             async with AsyncSessionLocal() as session:
@@ -90,33 +90,47 @@ class LiveAnalysisProcessor:
                     logger.warning(f"No data found for block {block_number}")
                     return None
 
-                # Convert to AnalysisPBS model
-                return AnalysisPBS(
+                # Process relay data
+                relays_list = (
+                    [r for r in row.relays if r is not None]
+                    if row.relays is not None
+                    else None
+                )
+                n_relays = len(relays_list) if relays_list else 0
+                is_block_vanilla = n_relays == 0
+
+                # Convert values with defaults
+                builder_balance_increase = wei_to_eth(row.builder_balance_increase) or 0.0
+                proposer_subsidy = wei_to_eth(row.proposer_subsidy) or 0.0
+                total_value = builder_balance_increase + proposer_subsidy
+                builder_name = clean_builder_name(row.builder_name) or "unknown"
+
+                # Convert to AnalysisPBSV2 model
+                return AnalysisPBSV2(
                     block_number=row.block_number,
                     block_timestamp=row.block_timestamp,
-                    builder_balance_increase=wei_to_eth(row.builder_balance_increase),
-                    relays=(
-                        [r for r in row.relays if r is not None]
-                        if row.relays is not None
-                        else None
-                    ),
-                    proposer_subsidy=wei_to_eth(row.proposer_subsidy),
-                    builder_name=clean_builder_name(row.builder_name),
+                    builder_balance_increase=builder_balance_increase,
+                    proposer_subsidy=proposer_subsidy,
+                    total_value=total_value,
+                    is_block_vanilla=is_block_vanilla,
+                    n_relays=n_relays,
+                    relays=relays_list,
+                    builder_name=builder_name,
                 )
 
         except Exception as e:
             logger.error(f"Failed to aggregate data for block {block_number}: {e}")
             return None
 
-    async def store_analysis(self, analysis: AnalysisPBS) -> None:
+    async def store_analysis(self, analysis: AnalysisPBSV2) -> None:
         """Store PBS analysis in database using upsert.
 
         Args:
-            analysis: AnalysisPBS model to store.
+            analysis: AnalysisPBSV2 model to store.
         """
         try:
             await upsert_model(
-                db_model_class=AnalysisPBSDB,
+                db_model_class=AnalysisPBSV2DB,
                 pydantic_model=analysis,
                 primary_key_value=analysis.block_number,
             )
@@ -183,7 +197,7 @@ async def main(queue: asyncio.Queue[dict[str, Any]]) -> None:
     Args:
         queue: Queue to consume block headers from.
     """
-    processor = LiveAnalysisProcessor(queue)
+    processor = LiveAnalysisProcessorV2(queue)
     await processor.run()
 
 

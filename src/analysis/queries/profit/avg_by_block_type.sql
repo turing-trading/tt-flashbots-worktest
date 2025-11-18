@@ -1,7 +1,8 @@
 -- Average Profit by Block Type
--- Compare average builder profit between MEV-Boost and vanilla blocks
+-- Compare average total value between MEV-Boost and vanilla blocks
 --
--- This query calculates the average builder_balance_increase (onchain profit)
+-- This query calculates the average total value where
+-- total_value = builder_balance_increase + proposer_subsidy
 -- for both MEV-Boost blocks (using relays) and vanilla blocks (self-built).
 --
 -- MEV-Boost blocks: relays IS NOT NULL and array_length(relays, 1) IS NOT NULL
@@ -12,8 +13,8 @@
 --
 -- Returns:
 -- - block_type: 'mev_boost' or 'vanilla'
--- - avg_profit_eth: Average profit per block in ETH
--- - total_profit_eth: Total profit in ETH
+-- - avg_profit_eth: Average total value per block in ETH (builder_balance_increase + proposer_subsidy)
+-- - total_profit_eth: Total value in ETH (sum of builder_balance_increase + proposer_subsidy)
 -- - block_count: Number of blocks of this type
 --
 -- Usage in Grafana:
@@ -24,21 +25,16 @@
 WITH block_type_profits AS (
     SELECT
         CASE
-            WHEN relays IS NULL OR array_length(relays, 1) IS NULL THEN 'vanilla'
+            WHEN is_block_vanilla THEN 'vanilla'
             ELSE 'mev_boost'
         END as block_type,
-        SUM(COALESCE(builder_balance_increase, 0)) as total_profit_eth,
-        AVG(COALESCE(builder_balance_increase, 0)) as avg_profit_eth,
+        SUM(total_value) as total_profit_eth,
+        AVG(total_value) as avg_profit_eth,
         COUNT(*) as block_count
-    FROM analysis_pbs
+    FROM analysis_pbs_v2
     WHERE
         $__timeFilter(block_timestamp)
-        AND builder_balance_increase IS NOT NULL
-    GROUP BY
-        CASE
-            WHEN relays IS NULL OR array_length(relays, 1) IS NULL THEN 'vanilla'
-            ELSE 'mev_boost'
-        END
+    GROUP BY is_block_vanilla
 )
 SELECT
     block_type,
