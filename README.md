@@ -34,31 +34,31 @@ Ethereum Node (WebSocket) → Live Stream → Processing Queues
 src/
 ├── live.py                    # WebSocket coordinator for live streaming
 ├── analysis/                  # PBS analysis and aggregation
-│   ├── backfill.py           # Historical PBS data aggregation
-│   ├── live.py               # Live PBS data aggregation
-│   ├── constants.py          # Builder name normalization
-│   └── queries/              # Grafana SQL queries
+│   ├── backfill.py            # Historical PBS data aggregation
+│   ├── live.py                # Live PBS data aggregation
+│   ├── constants.py           # Builder name normalization
+│   └── queries/               # Grafana SQL queries
 │       ├── builder_market_share.sql
 │       ├── builder_profit.sql
 │       ├── proposer_vs_builder_profit.sql
 │       └── ...
 ├── data/
-│   ├── blocks/               # Block header collection
-│   │   ├── backfill.py      # Historical block fetching
-│   │   └── live.py          # Live block streaming
-│   ├── proposers/            # Proposer balance tracking
-│   │   ├── backfill.py      # Historical balance calculation
-│   │   └── live.py          # Live balance tracking
-│   ├── relays/               # Relay payload collection
-│   │   ├── backfill.py      # Historical relay data
-│   │   ├── live.py          # Live relay monitoring
-│   │   └── constants.py     # Relay configuration
-│   └── builders/             # Builder identification
-│       ├── backfill.py      # Historical builder mapping
-│       └── live.py          # Live builder identification
-└── helpers/                  # Shared utilities
-    ├── db.py                # Database configuration
-    └── logging.py           # Structured logging
+│   ├── blocks/                # Block header collection
+│   │   ├── backfill.py        # Historical block fetching
+│   │   └── live.py            # Live block streaming
+│   ├── proposers/             # Proposer balance tracking
+│   │   ├── backfill.py        # Historical balance calculation
+│   │   └── live.py            # Live balance tracking
+│   ├── relays/                # Relay payload collection
+│   │   ├── backfill.py        # Historical relay data
+│   │   ├── live.py            # Live relay monitoring
+│   │   └── constants.py       # Relay configuration
+│   └── builders/              # Builder identification
+│       ├── backfill.py        # Historical builder mapping
+│       └── live.py            # Live builder identification
+└── helpers/                   # Shared utilities
+    ├── db.py                  # Database configuration
+    └── logging.py             # Structured logging
 ```
 
 ## Features
@@ -235,167 +235,3 @@ All queries include:
 - Grafana configuration instructions
 - Support for time range filtering
 - Example visualization settings
-
-## Deployment
-
-### Docker Build
-
-Build the Docker image:
-
-```bash
-cd deploy
-./build.sh
-```
-
-This builds and pushes to your container registry (configured in `build.sh`).
-
-### Kubernetes Deployment
-
-Deploy to Kubernetes:
-
-```bash
-kubectl apply -f deploy/k8s/namespace.yaml
-kubectl apply -f deploy/k8s/secret.yaml
-kubectl apply -f deploy/k8s/docker-registry-secret.yaml
-kubectl apply -f deploy/k8s/deployment.yaml
-```
-
-The deployment:
-- Runs the live streaming coordinator
-- Auto-restarts on failure
-- Uses ConfigMaps for environment configuration
-- Pulls from private container registry
-
-Monitor logs:
-
-```bash
-kubectl logs -n flashbots -l app=flashbots-live --follow
-```
-
-## Development
-
-### Code Quality Standards
-
-This project enforces strict code quality:
-
-- **Linting**: Ruff with default rules
-- **Formatting**: Ruff formatter (88 char line length)
-- **Type Checking**: Pyright in strict mode
-- **Testing**: Pytest with coverage reporting
-- **CI/CD**: All checks must pass before merge
-
-### Testing
-
-Run tests:
-
-```bash
-make test           # Basic test run
-make test-cov       # With coverage report
-```
-
-Coverage reports are generated in `htmlcov/`.
-
-### Adding New Queries
-
-To add a new Grafana query:
-
-1. Create a new `.sql` file in `src/analysis/queries/`
-2. Follow the existing query format:
-   - Header comment with description
-   - Variable documentation (`$__timeFilter`, etc.)
-   - Return column documentation
-   - Grafana configuration instructions
-3. Test the query in Grafana before committing
-
-### Modifying Builder Name Mapping
-
-Edit `src/analysis/constants.py`:
-
-```python
-BUILDER_NAME_MAPPING = {
-    "raw_name": "Canonical Name",
-    # Add new mappings here
-}
-```
-
-The `clean_builder_name()` function applies these mappings automatically.
-
-## Performance Considerations
-
-### Database Optimization
-
-For best performance:
-
-1. **Use TimescaleDB** instead of plain PostgreSQL:
-   ```sql
-   SELECT create_hypertable('analysis_pbs', 'block_timestamp');
-   ```
-
-2. **Create indexes** on frequently queried columns:
-   ```sql
-   CREATE INDEX idx_analysis_pbs_builder_name ON analysis_pbs(builder_name);
-   CREATE INDEX idx_analysis_pbs_timestamp ON analysis_pbs(block_timestamp);
-   ```
-
-3. **Configure PostgreSQL** for time-series workloads:
-   - Increase `shared_buffers`
-   - Tune `work_mem` for aggregations
-   - Enable parallel query execution
-
-### Backfill Strategies
-
-- Start with **recent data** (last 6 months) for quick value
-- Run **relays backfill** with caution (rate limits apply)
-- Use **smaller batch sizes** (1000) for memory-constrained systems
-- Run **multiple backfill scripts** in parallel for faster completion
-
-## Troubleshooting
-
-### Relay Timeouts
-
-If relay backfill fails with timeouts:
-- Check `src/data/relays/constants.py` for problematic relays
-- Comment out relays with Cloudflare protection
-- Increase retry delays in `backfill.py`
-
-### WebSocket Disconnections
-
-Live streaming auto-reconnects, but if issues persist:
-- Check `ETH_WS_URL` is correct and accessible
-- Verify firewall/proxy allows WebSocket connections
-- Monitor logs for specific error messages
-
-### Database Connection Issues
-
-- Verify `DATABASE_URL` format: `postgresql://user:pass@host:port/db`
-- Check PostgreSQL is running and accepting connections
-- Ensure database exists (create with `createdb flashbots`)
-
-### Type Checking Errors
-
-SQLAlchemy patterns may cause false positives:
-- Use `# type: ignore` for known safe patterns
-- Check existing code for examples
-- Refer to SQLAlchemy type stubs documentation
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run `make all` to verify all checks pass
-5. Submit a pull request
-
-## License
-
-[Specify your license here]
-
-## Acknowledgments
-
-- **Flashbots**: For the MEV-Boost protocol and relay infrastructure
-- **Ethereum Foundation**: For Ethereum and the Beacon Chain
-- Built with Python 3.14, SQLAlchemy, httpx, and Rich
-
-## Contact
-
-[Your contact information]
