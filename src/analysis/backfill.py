@@ -12,11 +12,13 @@ from rich.progress import (
     TaskID,
     TextColumn,
     TimeElapsedColumn,
+    TimeRemainingColumn,
 )
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.analysis.constants import clean_builder_name
 from src.analysis.db import AnalysisPBSDB
 from src.data.blocks.db import BlockDB
 from src.data.builders.db import BuilderIdentifiersDB
@@ -24,6 +26,8 @@ from src.data.proposers.db import ProposerBalancesDB
 from src.data.relays.db import RelaysPayloadsDB
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
+
+START_DATE = datetime(2025, 6, 1, 0, 0, 0)
 
 
 class BackfillAnalysisPBS:
@@ -52,9 +56,6 @@ class BackfillAnalysisPBS:
         Returns:
             List of block numbers that need to be processed
         """
-        # Date filter: June 1, 2025 00:00:00 UTC
-        start_date = datetime(2025, 6, 1, 0, 0, 0)
-
         # Use NOT EXISTS for better performance on large tables
         subquery = select(AnalysisPBSDB.block_number).where(
             AnalysisPBSDB.block_number == BlockDB.number
@@ -63,18 +64,22 @@ class BackfillAnalysisPBS:
         stmt = (
             select(BlockDB.number)
             .where(~subquery.exists())
-            .where(BlockDB.timestamp >= start_date)
+            .where(BlockDB.timestamp >= START_DATE)
             .order_by(BlockDB.number.desc())
         )
 
         result = await session.execute(stmt)
         missing_blocks = result.fetchall()
-        return missing_blocks
+        # Type ignore: SQLAlchemy Row objects are compatible with tuple
+        return list(missing_blocks)  # type: ignore
 
     async def _get_block_count(self, session: AsyncSession) -> int:
         """Get total count of blocks in the blocks table from June 2025 onwards."""
-        start_date = datetime(2025, 6, 1, 0, 0, 0)
-        stmt = select(func.count()).select_from(BlockDB).where(BlockDB.timestamp >= start_date)
+        stmt = (
+            select(func.count())
+            .select_from(BlockDB)
+            .where(BlockDB.timestamp >= START_DATE)
+        )
         result = await session.execute(stmt)
         return result.scalar_one()
 
@@ -153,7 +158,7 @@ class BackfillAnalysisPBS:
                     "builder_balance_increase": builder_balance_increase,
                     "relays": relays if relays else None,
                     "proposer_subsidy": proposer_subsidy,
-                    "builder_name": row.builder_name,
+                    "builder_name": clean_builder_name(row.builder_name),
                 }
             )
 
@@ -247,9 +252,7 @@ class BackfillAnalysisPBS:
 
             self.console.print("[bold blue]Backfilling PBS Analysis Data[/bold blue]")
             self.console.print("[cyan]Date range: June 2025 onwards[/cyan]")
-            self.console.print(
-                f"[cyan]Total blocks in range: {total_blocks:,}[/cyan]"
-            )
+            self.console.print(f"[cyan]Total blocks in range: {total_blocks:,}[/cyan]")
             self.console.print(
                 f"[cyan]Missing blocks to process: {total_missing:,}[/cyan]\n"
             )
@@ -262,6 +265,8 @@ class BackfillAnalysisPBS:
                 MofNCompleteColumn(),
                 TextColumn("•"),
                 TimeElapsedColumn(),
+                TextColumn("•"),
+                TimeRemainingColumn(),
                 console=self.console,
             )
 

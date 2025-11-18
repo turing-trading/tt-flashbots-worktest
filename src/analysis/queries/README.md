@@ -2,6 +2,12 @@
 
 This directory contains SQL queries designed for Grafana dashboards to analyze Proposer-Builder Separation (PBS) metrics.
 
+## Query Types
+
+Each metric has two versions:
+- **Static** (`*.sql`): Aggregate metrics for the selected time range (pie charts, tables)
+- **Rolling** (`*_rolling.sql`): Time series data showing trends over time (line charts, area charts)
+
 ## Queries
 
 ### 1. Relay Market Share (`relay_market_share.sql`)
@@ -76,6 +82,71 @@ This directory contains SQL queries designed for Grafana dashboards to analyze P
 
 ---
 
+### 5. Relay Market Share - Rolling (`relay_market_share_rolling.sql`)
+
+**Purpose**: Track how relay market share changes over time.
+
+**Metrics**:
+- `time`: Time bucket (configurable interval)
+- `relay`: Relay name
+- `blocks_delivered`: Number of blocks in this time bucket
+- `market_share_pct`: Market share percentage for this time bucket
+
+**Grafana Transformation**: Use "Partition by values" on the `relay` field to create one line per relay
+
+**Grafana Visualization**: Time series line chart showing relay adoption trends
+
+---
+
+### 6. Builder Market Share - Rolling (`builder_market_share_rolling.sql`)
+
+**Purpose**: Track how builder market share changes over time (MEV-Boost blocks only).
+
+**Metrics**:
+- `time`: Time bucket (configurable interval)
+- `builder_name`: Builder name
+- `blocks_built`: Number of blocks in this time bucket
+- `market_share_pct`: Market share percentage for this time bucket
+
+**Grafana Transformation**: Use "Partition by values" on the `builder_name` field to create one line per builder
+
+**Grafana Visualization**: Time series line chart showing builder dominance trends
+
+---
+
+### 7. MEV-Boost Market Share - Rolling (`mev_boost_market_share_rolling.sql`)
+
+**Purpose**: Track MEV-Boost adoption rate over time.
+
+**Metrics**:
+- `time`: Time bucket (configurable interval)
+- `block_type`: 'mev_boost' or 'vanilla'
+- `block_count`: Number of blocks in this time bucket
+- `market_share_pct`: Percentage for this time bucket
+
+**Grafana Transformation**: Use "Partition by values" on the `block_type` field to create two lines
+
+**Grafana Visualization**: Time series area chart (stacked) showing MEV-Boost vs vanilla adoption
+
+---
+
+### 8. Builder Profit - Rolling (`builder_profit_rolling.sql`)
+
+**Purpose**: Track builder profits over time.
+
+**Metrics**:
+- `time`: Time bucket (configurable interval)
+- `builder_name`: Builder name
+- `total_profit_eth`: Total profit in this time bucket
+- `avg_profit_eth`: Average profit per block in this time bucket
+- `block_count`: Number of blocks built
+
+**Grafana Transformation**: Use "Partition by values" on the `builder_name` field, keep `total_profit_eth` or `avg_profit_eth`
+
+**Grafana Visualization**: Time series line chart showing profit trends per builder
+
+---
+
 ## Data Source
 
 All queries use the `analysis_pbs` table, which aggregates data from:
@@ -95,12 +166,40 @@ This allows dynamic time range selection in Grafana dashboards.
 
 ## Usage in Grafana
 
+### For Static Queries (snapshots)
 1. Add PostgreSQL data source to Grafana
 2. Create a new panel
 3. Select "PostgreSQL" as data source
 4. Copy the SQL query from the desired `.sql` file
-5. Adjust visualization type based on recommendations above
-6. Set time range using Grafana's time picker
+5. Set **Format as**: Table or Time series (depending on visualization)
+6. Adjust visualization type based on recommendations above
+7. Set time range using Grafana's time picker
+
+### For Rolling Queries (time series)
+1. Add PostgreSQL data source to Grafana
+2. Create a new panel with Time series visualization
+3. Select "PostgreSQL" as data source
+4. Copy the SQL query from the desired `*_rolling.sql` file
+5. Set **Format as**: Time series
+6. **Add Transformation**:
+   - Click "Transform" tab
+   - Add "Partition by values"
+   - Select the grouping field (e.g., `relay`, `builder_name`, `block_type`)
+   - Keep the time and value fields
+7. Configure the panel (Y-axis labels, legend, etc.)
+8. Set time range using Grafana's time picker
+
+### Transformation Guide
+
+**"Partition by values" Transformation Steps:**
+1. Transform tab → "+ Add transformation"
+2. Select: "Partition by values"
+3. Configure:
+   - **Field**: The column to split by (relay, builder_name, block_type)
+   - **Keep fields**: Select `time` and the metric column (market_share_pct, total_profit_eth, etc.)
+4. Each unique value in the field becomes a separate line
+
+**Alternative (Grafana 10+):** Use "Multi-frame time series" transformation for automatic grouping
 
 ## Example Query Modification
 

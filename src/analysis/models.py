@@ -13,7 +13,8 @@ class AnalysisPBS(BaseModel):
         ..., description="Block timestamp from blocks table"
     )
     builder_balance_increase: float | None = Field(
-        None, description="Builder balance increase in ETH from proposers_balances table"
+        None,
+        description="Builder balance increase in ETH from proposers_balances table",
     )
     relays: list[str] | None = Field(
         None, description="List of relay names from relays_payloads table"

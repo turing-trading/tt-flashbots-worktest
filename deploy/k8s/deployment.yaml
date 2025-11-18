@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flashbots-live
+  namespace: flashbots
+  labels:
+    app: flashbots-live
+    component: streaming
+spec:
+  replicas: 1  # Only 1 replica needed for live streaming to avoid duplicate processing
+  strategy:
+    type: Recreate  # Ensure only one instance runs at a time
+  selector:
+    matchLabels:
+      app: flashbots-live
+  template:
+    metadata:
+      labels:
+        app: flashbots-live
+        component: streaming
+    spec:
+      # Image pull secret for private Docker registry
+      imagePullSecrets:
+      - name: docker-registry-secret
+
+      containers:
+      - name: flashbots-live
+        image: docker.turing-trading.org/flashbots/mev-boost:latest
+        imagePullPolicy: Always
+
+        # Environment variables from secret
+        envFrom:
+        - secretRef:
+            name: flashbots-live-secrets
+
+        # Resource limits and requests
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+
+        # Liveness probe - restart if unhealthy
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 30
+          periodSeconds: 60
+          timeoutSeconds: 10
+          failureThreshold: 3
+
+        # Readiness probe - mark ready when started
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+
+        # Security context
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # Python needs to write .pyc files
+
+      # Pod security context
+      securityContext:
+        fsGroup: 1000
+
+      # Restart policy
+      restartPolicy: Always
+---
+# Optional: ServiceMonitor for Prometheus (if using Prometheus Operator)
+# apiVersion: monitoring.coreos.com/v1
+# kind: ServiceMonitor
+# metadata:
+#   name: flashbots-live
+#   namespace: flashbots
+# spec:
+#   selector:
+#     matchLabels:
+#       app: flashbots-live
+#   endpoints:
+#   - port: metrics
+#     interval: 30s

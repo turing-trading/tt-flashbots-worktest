@@ -141,7 +141,8 @@ class BackfillBuilderIdentifiers:
         checkpoint = result.scalar_one_or_none()
 
         if checkpoint:
-            return (checkpoint.from_block, checkpoint.to_block)
+            # Type ignore: SQLAlchemy Column objects are runtime values
+            return (int(checkpoint.from_block), int(checkpoint.to_block))  # type: ignore
         return None
 
     async def _update_checkpoint(
@@ -236,7 +237,9 @@ class BackfillBuilderIdentifiers:
                 continue
 
             # Parse builder name from cleaned data and also strip null bytes
-            builder_name = self._parse_builder_name(cleaned_extra_data).replace("\x00", "")
+            builder_name = self._parse_builder_name(cleaned_extra_data).replace(
+                "\x00", ""
+            )
 
             # Skip if builder_name is empty after cleaning
             if not builder_name:

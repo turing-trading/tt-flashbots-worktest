@@ -41,3 +41,9 @@ clean: ## Clean up generated files
 
 all: lint format-check type-check test ## Run lint, format check, type check, and tests
 
+backfill:
+	poetry run python src/data/blocks/backfill.py
+	poetry run python src/data/relays/backfill.py
+	poetry run python src/data/builders/backfill.py
+	poetry run python src/data/proposers/backfill.py
+	poetry run python src/analysis/backfill.py
