@@ -146,6 +146,9 @@ async def test_very_small_eth_values(async_session: AsyncSession):
     result = await async_session.execute(stmt)
     count = result.scalar()
 
+    if count is None:
+        pytest.skip("No blocks found in database")
+
     # This is informational - small negative values from float precision
     if count > 0:
         print(
@@ -191,6 +194,9 @@ async def test_builder_name_unknown_default(async_session: AsyncSession):
     )
     result = await async_session.execute(stmt)
     unknown_count = result.scalar()
+
+    if unknown_count is None:
+        pytest.skip("No blocks found in database")
 
     # This is informational - some blocks will have unknown builders
     if unknown_count > 0:

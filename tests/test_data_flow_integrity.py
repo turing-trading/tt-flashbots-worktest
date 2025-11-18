@@ -33,9 +33,9 @@ async def test_block_coverage_for_analysis(
     )
     missing = result.fetchall()
 
-    assert (
-        len(missing) == 0
-    ), f"Found {len(missing)} blocks without analysis records (after {start_date}): {missing[:10]}"
+    assert len(missing) == 0, (
+        f"Found {len(missing)} blocks without analysis records (after {start_date}): {missing[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -56,9 +56,9 @@ async def test_no_orphaned_analysis_records(
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     orphaned = result.fetchall()
 
-    assert (
-        len(orphaned) == 0
-    ), f"Found {len(orphaned)} analysis records without corresponding blocks: {orphaned[:10]}"
+    assert len(orphaned) == 0, (
+        f"Found {len(orphaned)} analysis records without corresponding blocks: {orphaned[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -89,9 +89,14 @@ async def test_data_completeness_continuity(async_session: AsyncSession):
     result = await async_session.execute(stmt)
     actual_analysis_count = result.scalar()
 
+    if expected_analysis_count is None or actual_analysis_count is None:
+        pytest.skip("No analysis records in database")
+
     # Allow some tolerance for incomplete backfills
     coverage_ratio = (
-        actual_analysis_count / expected_analysis_count if expected_analysis_count > 0 else 0
+        actual_analysis_count / expected_analysis_count
+        if expected_analysis_count > 0
+        else 0
     )
 
     # This is informational - may be incomplete during backfill
@@ -123,9 +128,9 @@ async def test_relay_data_matches_mev_boost_blocks(
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     misclassified = result.fetchall()
 
-    assert (
-        len(misclassified) == 0
-    ), f"Found {len(misclassified)} blocks with relay data marked as vanilla: {misclassified[:10]}"
+    assert len(misclassified) == 0, (
+        f"Found {len(misclassified)} blocks with relay data marked as vanilla: {misclassified[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -151,6 +156,9 @@ async def test_proposer_balance_completeness(
     """)
     result = await async_session.execute(stmt)
     balance_count = result.scalar()
+
+    if balance_count is None or total_blocks is None:
+        pytest.skip("No balance records in database")
 
     coverage_ratio = balance_count / total_blocks if total_blocks > 0 else 0
 
@@ -208,9 +216,9 @@ async def test_cross_table_block_number_consistency(
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     miner_mismatches = result.fetchall()
 
-    assert (
-        len(miner_mismatches) == 0
-    ), f"Found {len(miner_mismatches)} miner address mismatches across tables: {miner_mismatches[:10]}"
+    assert len(miner_mismatches) == 0, (
+        f"Found {len(miner_mismatches)} miner address mismatches across tables: {miner_mismatches[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -236,6 +244,6 @@ async def test_relay_aggregation_in_analysis(
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     mismatches = result.fetchall()
 
-    assert (
-        len(mismatches) == 0
-    ), f"Found {len(mismatches)} relay count mismatches between analysis and raw relay data: {mismatches[:10]}"
+    assert len(mismatches) == 0, (
+        f"Found {len(mismatches)} relay count mismatches between analysis and raw relay data: {mismatches[:10]}"
+    )

@@ -22,8 +22,7 @@ async def test_total_value_calculation(
             AnalysisPBSDB.builder_balance_increase,
             AnalysisPBSDB.proposer_subsidy,
             AnalysisPBSDB.total_value,
-        )
-        .limit(10000)  # Sample for performance
+        ).limit(10000)  # Sample for performance
     )
 
     result = await async_session.execute(stmt)
@@ -37,9 +36,9 @@ async def test_total_value_calculation(
             if len(violations) >= max_violations:
                 break
 
-    assert (
-        len(violations) == 0
-    ), f"Found {len(violations)} total_value calculation errors: {violations[:10]}"
+    assert len(violations) == 0, (
+        f"Found {len(violations)} total_value calculation errors: {violations[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -57,8 +56,7 @@ async def test_vanilla_block_classification(
             AnalysisPBSDB.is_block_vanilla,
             AnalysisPBSDB.n_relays,
             AnalysisPBSDB.relays,
-        )
-        .limit(10000)  # Sample for performance
+        ).limit(10000)  # Sample for performance
     )
 
     result = await async_session.execute(stmt)
@@ -81,9 +79,9 @@ async def test_vanilla_block_classification(
         if len(violations) >= max_violations:
             break
 
-    assert (
-        len(violations) == 0
-    ), f"Found {len(violations)} vanilla block classification violations: {violations[:10]}"
+    assert len(violations) == 0, (
+        f"Found {len(violations)} vanilla block classification violations: {violations[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -107,9 +105,9 @@ async def test_relay_count_consistency(
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     mismatches = result.fetchall()
 
-    assert (
-        len(mismatches) == 0
-    ), f"Found {len(mismatches)} relay count mismatches: {mismatches[:10]}"
+    assert len(mismatches) == 0, (
+        f"Found {len(mismatches)} relay count mismatches: {mismatches[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -185,9 +183,9 @@ async def test_timestamp_consistency(async_session: AsyncSession, max_violations
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     mismatches = result.fetchall()
 
-    assert (
-        len(mismatches) == 0
-    ), f"Found {len(mismatches)} timestamp mismatches between blocks and analysis: {mismatches[:10]}"
+    assert len(mismatches) == 0, (
+        f"Found {len(mismatches)} timestamp mismatches between blocks and analysis: {mismatches[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -208,9 +206,9 @@ async def test_analysis_references_valid_block(
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     orphaned = result.fetchall()
 
-    assert (
-        len(orphaned) == 0
-    ), f"Found {len(orphaned)} orphaned analysis records (no matching block): {orphaned[:10]}"
+    assert len(orphaned) == 0, (
+        f"Found {len(orphaned)} orphaned analysis records (no matching block): {orphaned[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -228,7 +226,9 @@ async def test_n_relays_range(async_session: AsyncSession, max_violations: int):
     result = await async_session.execute(stmt)
     negative = result.fetchall()
 
-    assert len(negative) == 0, f"Found {len(negative)} negative n_relays values: {negative[:10]}"
+    assert len(negative) == 0, (
+        f"Found {len(negative)} negative n_relays values: {negative[:10]}"
+    )
 
     # Check reasonable upper bound
     stmt = (
@@ -288,6 +288,6 @@ async def test_analysis_record_uniqueness(async_session: AsyncSession):
     result = await async_session.execute(stmt)
     duplicates = result.fetchall()
 
-    assert (
-        len(duplicates) == 0
-    ), f"Found {len(duplicates)} duplicate analysis records for same block: {duplicates}"
+    assert len(duplicates) == 0, (
+        f"Found {len(duplicates)} duplicate analysis records for same block: {duplicates}"
+    )

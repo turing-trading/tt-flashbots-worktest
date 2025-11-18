@@ -30,9 +30,9 @@ async def test_block_continuity(async_session: AsyncSession, max_violations: int
     # Expected count (inclusive range)
     expected_count = max_block - min_block + 1
 
-    assert (
-        actual_count == expected_count
-    ), f"Found block gaps: expected {expected_count} blocks, got {actual_count} (range: {min_block}-{max_block})"
+    assert actual_count == expected_count, (
+        f"Found block gaps: expected {expected_count} blocks, got {actual_count} (range: {min_block}-{max_block})"
+    )
 
 
 @pytest.mark.asyncio
@@ -51,7 +51,9 @@ async def test_block_hash_uniqueness(async_session: AsyncSession, max_violations
     result = await async_session.execute(stmt)
     duplicates = result.fetchall()
 
-    assert len(duplicates) == 0, f"Found {len(duplicates)} duplicate block hashes: {duplicates}"
+    assert len(duplicates) == 0, (
+        f"Found {len(duplicates)} duplicate block hashes: {duplicates}"
+    )
 
 
 @pytest.mark.asyncio
@@ -76,9 +78,9 @@ async def test_parent_hash_chain(async_session: AsyncSession, max_violations: in
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     violations = result.fetchall()
 
-    assert (
-        len(violations) == 0
-    ), f"Found {len(violations)} parent hash chain violations: {violations[:10]}"
+    assert len(violations) == 0, (
+        f"Found {len(violations)} parent hash chain violations: {violations[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -101,9 +103,9 @@ async def test_timestamp_monotonicity(async_session: AsyncSession, max_violation
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     violations = result.fetchall()
 
-    assert (
-        len(violations) == 0
-    ), f"Found {len(violations)} timestamp ordering violations (timestamps going backward): {violations[:10]}"
+    assert len(violations) == 0, (
+        f"Found {len(violations)} timestamp ordering violations (timestamps going backward): {violations[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -145,9 +147,9 @@ async def test_block_hash_format(async_session: AsyncSession, max_violations: in
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     invalid = result.fetchall()
 
-    assert (
-        len(invalid) == 0
-    ), f"Found {len(invalid)} blocks with invalid hash format: {invalid[:10]}"
+    assert len(invalid) == 0, (
+        f"Found {len(invalid)} blocks with invalid hash format: {invalid[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -165,9 +167,9 @@ async def test_miner_address_format(async_session: AsyncSession, max_violations:
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     invalid = result.fetchall()
 
-    assert (
-        len(invalid) == 0
-    ), f"Found {len(invalid)} blocks with invalid miner address format: {invalid[:10]}"
+    assert len(invalid) == 0, (
+        f"Found {len(invalid)} blocks with invalid miner address format: {invalid[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -184,9 +186,9 @@ async def test_gas_values_consistency(async_session: AsyncSession, max_violation
     result = await async_session.execute(stmt)
     violations = result.fetchall()
 
-    assert (
-        len(violations) == 0
-    ), f"Found {len(violations)} blocks where gas_used > gas_limit: {violations[:10]}"
+    assert len(violations) == 0, (
+        f"Found {len(violations)} blocks where gas_used > gas_limit: {violations[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -196,9 +198,7 @@ async def test_transaction_count_non_negative(async_session: AsyncSession):
     Transaction count should be >= 0 for all blocks.
     """
     stmt = (
-        select(func.count())
-        .select_from(BlockDB)
-        .where(BlockDB.transaction_count < 0)
+        select(func.count()).select_from(BlockDB).where(BlockDB.transaction_count < 0)
     )
     result = await async_session.execute(stmt)
     count = result.scalar()

@@ -23,9 +23,9 @@ async def test_composite_key_uniqueness(async_session: AsyncSession):
     result = await async_session.execute(stmt)
     duplicates = result.fetchall()
 
-    assert (
-        len(duplicates) == 0
-    ), f"Found {len(duplicates)} duplicate (slot, relay) combinations: {duplicates}"
+    assert len(duplicates) == 0, (
+        f"Found {len(duplicates)} duplicate (slot, relay) combinations: {duplicates}"
+    )
 
 
 @pytest.mark.asyncio
@@ -47,9 +47,9 @@ async def test_slot_to_block_consistency(
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     inconsistent = result.fetchall()
 
-    assert (
-        len(inconsistent) == 0
-    ), f"Found {len(inconsistent)} slots with multiple different block numbers: {inconsistent[:10]}"
+    assert len(inconsistent) == 0, (
+        f"Found {len(inconsistent)} slots with multiple different block numbers: {inconsistent[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -107,15 +107,13 @@ async def test_builder_pubkey_format(async_session: AsyncSession, max_violations
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     invalid = result.fetchall()
 
-    assert (
-        len(invalid) == 0
-    ), f"Found {len(invalid)} invalid builder pubkey formats: {invalid[:10]}"
+    assert len(invalid) == 0, (
+        f"Found {len(invalid)} invalid builder pubkey formats: {invalid[:10]}"
+    )
 
 
 @pytest.mark.asyncio
-async def test_proposer_pubkey_format(
-    async_session: AsyncSession, max_violations: int
-):
+async def test_proposer_pubkey_format(async_session: AsyncSession, max_violations: int):
     """Test that proposer public keys have correct format.
 
     Proposer pubkeys should be 98 characters (0x + 96 hex characters).
@@ -129,9 +127,9 @@ async def test_proposer_pubkey_format(
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     invalid = result.fetchall()
 
-    assert (
-        len(invalid) == 0
-    ), f"Found {len(invalid)} invalid proposer pubkey formats: {invalid[:10]}"
+    assert len(invalid) == 0, (
+        f"Found {len(invalid)} invalid proposer pubkey formats: {invalid[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -151,9 +149,9 @@ async def test_proposer_fee_recipient_format(
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     invalid = result.fetchall()
 
-    assert (
-        len(invalid) == 0
-    ), f"Found {len(invalid)} invalid fee recipient formats: {invalid[:10]}"
+    assert len(invalid) == 0, (
+        f"Found {len(invalid)} invalid fee recipient formats: {invalid[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -162,7 +160,11 @@ async def test_value_field_non_negative(async_session: AsyncSession):
 
     The value field represents payment to proposers and should always be >= 0.
     """
-    stmt = select(func.count()).select_from(RelaysPayloadsDB).where(RelaysPayloadsDB.value < 0)
+    stmt = (
+        select(func.count())
+        .select_from(RelaysPayloadsDB)
+        .where(RelaysPayloadsDB.value < 0)
+    )
     result = await async_session.execute(stmt)
     count = result.scalar()
 
@@ -176,16 +178,21 @@ async def test_gas_values_consistency(async_session: AsyncSession, max_violation
     Same validation as for blocks - gas used cannot exceed gas limit.
     """
     stmt = (
-        select(RelaysPayloadsDB.slot, RelaysPayloadsDB.relay, RelaysPayloadsDB.gas_used, RelaysPayloadsDB.gas_limit)
+        select(
+            RelaysPayloadsDB.slot,
+            RelaysPayloadsDB.relay,
+            RelaysPayloadsDB.gas_used,
+            RelaysPayloadsDB.gas_limit,
+        )
         .where(RelaysPayloadsDB.gas_used > RelaysPayloadsDB.gas_limit)
         .limit(max_violations)
     )
     result = await async_session.execute(stmt)
     violations = result.fetchall()
 
-    assert (
-        len(violations) == 0
-    ), f"Found {len(violations)} relay payloads where gas_used > gas_limit: {violations[:10]}"
+    assert len(violations) == 0, (
+        f"Found {len(violations)} relay payloads where gas_used > gas_limit: {violations[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -194,7 +201,11 @@ async def test_num_tx_non_negative(async_session: AsyncSession):
 
     The num_tx field should always be >= 0.
     """
-    stmt = select(func.count()).select_from(RelaysPayloadsDB).where(RelaysPayloadsDB.num_tx < 0)
+    stmt = (
+        select(func.count())
+        .select_from(RelaysPayloadsDB)
+        .where(RelaysPayloadsDB.num_tx < 0)
+    )
     result = await async_session.execute(stmt)
     count = result.scalar()
 
@@ -257,6 +268,6 @@ async def test_relay_payload_references_valid_block(
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     orphaned = result.fetchall()
 
-    assert (
-        len(orphaned) == 0
-    ), f"Found {len(orphaned)} relay payloads referencing non-existent blocks: {orphaned[:10]}"
+    assert len(orphaned) == 0, (
+        f"Found {len(orphaned)} relay payloads referencing non-existent blocks: {orphaned[:10]}"
+    )

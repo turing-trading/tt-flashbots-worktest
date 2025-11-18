@@ -41,9 +41,9 @@ async def test_builder_pubkey_uniqueness(async_session: AsyncSession):
     result = await async_session.execute(stmt)
     duplicates = result.fetchall()
 
-    assert (
-        len(duplicates) == 0
-    ), f"Found {len(duplicates)} duplicate builder pubkeys: {duplicates}"
+    assert len(duplicates) == 0, (
+        f"Found {len(duplicates)} duplicate builder pubkeys: {duplicates}"
+    )
 
 
 @pytest.mark.asyncio
@@ -61,9 +61,9 @@ async def test_builder_pubkey_format(async_session: AsyncSession, max_violations
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     invalid = result.fetchall()
 
-    assert (
-        len(invalid) == 0
-    ), f"Found {len(invalid)} invalid builder pubkey formats: {invalid[:10]}"
+    assert len(invalid) == 0, (
+        f"Found {len(invalid)} invalid builder pubkey formats: {invalid[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -81,9 +81,9 @@ async def test_no_null_bytes_in_names(async_session: AsyncSession, max_violation
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     invalid = result.fetchall()
 
-    assert (
-        len(invalid) == 0
-    ), f"Found {len(invalid)} builder names with null bytes: {invalid[:10]}"
+    assert len(invalid) == 0, (
+        f"Found {len(invalid)} builder names with null bytes: {invalid[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -131,6 +131,6 @@ async def test_builder_names_normalized(
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     whitespace_issues = result.fetchall()
 
-    assert (
-        len(whitespace_issues) == 0
-    ), f"Found {len(whitespace_issues)} builder names with leading/trailing whitespace: {whitespace_issues[:10]}"
+    assert len(whitespace_issues) == 0, (
+        f"Found {len(whitespace_issues)} builder names with leading/trailing whitespace: {whitespace_issues[:10]}"
+    )

@@ -26,9 +26,9 @@ async def test_balance_foreign_key_integrity(
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     orphaned = result.fetchall()
 
-    assert (
-        len(orphaned) == 0
-    ), f"Found {len(orphaned)} orphaned proposer balance records (no matching block): {orphaned[:10]}"
+    assert len(orphaned) == 0, (
+        f"Found {len(orphaned)} orphaned proposer balance records (no matching block): {orphaned[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -53,9 +53,9 @@ async def test_miner_address_consistency(
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     mismatches = result.fetchall()
 
-    assert (
-        len(mismatches) == 0
-    ), f"Found {len(mismatches)} miner address mismatches between blocks and proposer_balance: {mismatches[:10]}"
+    assert len(mismatches) == 0, (
+        f"Found {len(mismatches)} miner address mismatches between blocks and proposer_balance: {mismatches[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -70,8 +70,7 @@ async def test_balance_calculation(async_session: AsyncSession, max_violations: 
             ProposerBalancesDB.balance_before,
             ProposerBalancesDB.balance_after,
             ProposerBalancesDB.balance_increase,
-        )
-        .limit(10000)  # Sample for performance
+        ).limit(10000)  # Sample for performance
     )
 
     result = await async_session.execute(stmt)
@@ -81,15 +80,13 @@ async def test_balance_calculation(async_session: AsyncSession, max_violations: 
         expected = row.balance_after - row.balance_before
         actual = row.balance_increase
         if expected != actual:
-            violations.append(
-                (row.block_number, expected, actual, expected - actual)
-            )
+            violations.append((row.block_number, expected, actual, expected - actual))
             if len(violations) >= max_violations:
                 break
 
-    assert (
-        len(violations) == 0
-    ), f"Found {len(violations)} balance calculation errors: {violations[:10]}"
+    assert len(violations) == 0, (
+        f"Found {len(violations)} balance calculation errors: {violations[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -110,9 +107,9 @@ async def test_wei_value_ranges(async_session: AsyncSession, max_violations: int
     result = await async_session.execute(stmt)
     negative_before = result.fetchall()
 
-    assert (
-        len(negative_before) == 0
-    ), f"Found {len(negative_before)} negative balance_before values: {negative_before[:10]}"
+    assert len(negative_before) == 0, (
+        f"Found {len(negative_before)} negative balance_before values: {negative_before[:10]}"
+    )
 
     # Check balance_after is non-negative
     stmt = (
@@ -123,9 +120,9 @@ async def test_wei_value_ranges(async_session: AsyncSession, max_violations: int
     result = await async_session.execute(stmt)
     negative_after = result.fetchall()
 
-    assert (
-        len(negative_after) == 0
-    ), f"Found {len(negative_after)} negative balance_after values: {negative_after[:10]}"
+    assert len(negative_after) == 0, (
+        f"Found {len(negative_after)} negative balance_after values: {negative_after[:10]}"
+    )
 
     # Check for excessively large balance_increase (can be negative due to gas costs)
     stmt = (
@@ -136,9 +133,9 @@ async def test_wei_value_ranges(async_session: AsyncSession, max_violations: int
     result = await async_session.execute(stmt)
     excessive = result.fetchall()
 
-    assert (
-        len(excessive) == 0
-    ), f"Found {len(excessive)} excessive balance increases (> 100k ETH): {excessive[:10]}"
+    assert len(excessive) == 0, (
+        f"Found {len(excessive)} excessive balance increases (> 100k ETH): {excessive[:10]}"
+    )
 
 
 @pytest.mark.asyncio
@@ -166,18 +163,16 @@ async def test_balance_record_uniqueness(async_session: AsyncSession):
     block_number is the primary key and should be unique.
     """
     stmt = (
-        select(
-            ProposerBalancesDB.block_number, func.count().label("count")
-        )
+        select(ProposerBalancesDB.block_number, func.count().label("count"))
         .group_by(ProposerBalancesDB.block_number)
         .having(func.count() > 1)
     )
     result = await async_session.execute(stmt)
     duplicates = result.fetchall()
 
-    assert (
-        len(duplicates) == 0
-    ), f"Found {len(duplicates)} duplicate balance records for same block: {duplicates}"
+    assert len(duplicates) == 0, (
+        f"Found {len(duplicates)} duplicate balance records for same block: {duplicates}"
+    )
 
 
 @pytest.mark.asyncio
@@ -195,9 +190,9 @@ async def test_miner_address_format(async_session: AsyncSession, max_violations:
     result = await async_session.execute(stmt, {"max_violations": max_violations})
     invalid = result.fetchall()
 
-    assert (
-        len(invalid) == 0
-    ), f"Found {len(invalid)} invalid miner address formats: {invalid[:10]}"
+    assert len(invalid) == 0, (
+        f"Found {len(invalid)} invalid miner address formats: {invalid[:10]}"
+    )
 
 
 @pytest.mark.asyncio
