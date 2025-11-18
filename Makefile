@@ -47,3 +47,6 @@ backfill:
 	poetry run python src/data/builders/backfill.py
 	poetry run python src/data/proposers/backfill.py
 	poetry run python src/analysis/backfill.py
+
+live:
+	poetry run python src/live.py
