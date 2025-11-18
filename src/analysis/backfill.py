@@ -28,8 +28,8 @@ from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
 from src.helpers.parsers import wei_to_eth
 
-START_DATE = datetime(2022, 1, 1, 0, 0, 0)
-END_DATE = None
+START_DATE = datetime(2024, 12, 3, 6, 3, 54)
+END_DATE = datetime(2025, 11, 8, 18, 54, 40)
 
 
 class BackfillAnalysisPBSV2:
@@ -79,16 +79,15 @@ class BackfillAnalysisPBSV2:
         # Type ignore: SQLAlchemy Row objects are compatible with tuple
         return list(missing_blocks)  # type: ignore
 
-    async def _get_blocks_in_range(self, session: AsyncSession) -> list[tuple[int, ...]]:
+    async def _get_blocks_in_range(
+        self, session: AsyncSession
+    ) -> list[tuple[int, ...]]:
         """Get ALL block numbers in the date range (for overwrite mode).
 
         Returns:
             List of block numbers in the date range
         """
-        stmt = (
-            select(BlockDB.number)
-            .where(BlockDB.timestamp >= START_DATE)
-        )
+        stmt = select(BlockDB.number).where(BlockDB.timestamp >= START_DATE)
 
         # Add END_DATE filter if specified
         if END_DATE is not None:
@@ -308,10 +307,16 @@ class BackfillAnalysisPBSV2:
             # Display mode information
             self.console.print("[bold blue]Backfilling PBS Analysis Data[/bold blue]")
             if overwrite_mode:
-                self.console.print("[yellow]Mode: OVERWRITE (END_DATE specified)[/yellow]")
-                self.console.print(f"[cyan]Date range: {START_DATE} to {END_DATE}[/cyan]")
+                self.console.print(
+                    "[yellow]Mode: OVERWRITE (END_DATE specified)[/yellow]"
+                )
+                self.console.print(
+                    f"[cyan]Date range: {START_DATE} to {END_DATE}[/cyan]"
+                )
             else:
-                self.console.print("[cyan]Mode: Incremental (missing blocks only)[/cyan]")
+                self.console.print(
+                    "[cyan]Mode: Incremental (missing blocks only)[/cyan]"
+                )
                 self.console.print(f"[cyan]Start date: {START_DATE}[/cyan]")
 
             self.console.print(f"[cyan]Total blocks in range: {total_blocks:,}[/cyan]")

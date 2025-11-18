@@ -3,14 +3,14 @@
 import os
 
 RELAYS = [
-    # "relay-analytics.ultrasound.money",  # Redirect from relay.ultrasound.money
-    # "bloxroute.max-profit.blxrbdn.com",
-    # "bloxroute.regulated.blxrbdn.com",
+    "relay-analytics.ultrasound.money",  # Redirect from relay.ultrasound.money
+    "bloxroute.max-profit.blxrbdn.com",
+    "bloxroute.regulated.blxrbdn.com",
     "titanrelay.xyz",
-    # "agnostic-relay.net",
-    # "aestus.live",
-    # "boost-relay.flashbots.net",
-    # "relay.ethgas.com",
+    "agnostic-relay.net",
+    "aestus.live",
+    "boost-relay.flashbots.net",
+    "relay.ethgas.com",
     # "relay.btcs.com",
     # "relay.wenmerge.com",
     # "mainnet-relay.securerpc.com",
@@ -31,11 +31,11 @@ LIMITS = {
 
 # Per-relay limits (some relays have lower maximum limits)
 RELAY_LIMITS = {
-    # "bloxroute.max-profit.blxrbdn.com": 100,
-    # "bloxroute.regulated.blxrbdn.com": 100,
-    # "titanrelay.xyz": 100,
-    # "agnostic-relay.net": 100,
-    # "aestus.live": 100,
+    "bloxroute.max-profit.blxrbdn.com": 100,
+    "bloxroute.regulated.blxrbdn.com": 100,
+    "titanrelay.xyz": 100,
+    "agnostic-relay.net": 100,
+    "aestus.live": 100,
 }
 
 BEACON_ENDPOINT = os.getenv(
