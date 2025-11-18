@@ -26,6 +26,8 @@ websockets = "^14.1"
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0"
 pytest-cov = ">=4.1.0"
+pytest-timeout = "^2.3.0"
+pytest-asyncio = "^1.3.0"
 ruff = ">=0.4.0"
 pyright = ">=1.1.0"
 
@@ -85,8 +87,11 @@ addopts = [
     "--cov=src",
     "--cov-report=term-missing",
     "--cov-report=html",
+    "--timeout=30",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
 ]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

@@ -29,6 +29,7 @@ from src.helpers.logging import get_logger
 from src.helpers.parsers import wei_to_eth
 
 START_DATE = datetime(2022, 1, 1, 0, 0, 0)
+END_DATE = None
 
 
 class BackfillAnalysisPBSV2:
@@ -65,13 +66,40 @@ class BackfillAnalysisPBSV2:
             select(BlockDB.number)
             .where(~subquery.exists())
             .where(BlockDB.timestamp >= START_DATE)
-            .order_by(BlockDB.number.desc())
         )
+
+        # Add END_DATE filter if specified
+        if END_DATE is not None:
+            stmt = stmt.where(BlockDB.timestamp <= END_DATE)
+
+        stmt = stmt.order_by(BlockDB.number.desc())
 
         result = await session.execute(stmt)
         missing_blocks = result.fetchall()
         # Type ignore: SQLAlchemy Row objects are compatible with tuple
         return list(missing_blocks)  # type: ignore
+
+    async def _get_blocks_in_range(self, session: AsyncSession) -> list[tuple[int, ...]]:
+        """Get ALL block numbers in the date range (for overwrite mode).
+
+        Returns:
+            List of block numbers in the date range
+        """
+        stmt = (
+            select(BlockDB.number)
+            .where(BlockDB.timestamp >= START_DATE)
+        )
+
+        # Add END_DATE filter if specified
+        if END_DATE is not None:
+            stmt = stmt.where(BlockDB.timestamp <= END_DATE)
+
+        stmt = stmt.order_by(BlockDB.number.desc())
+
+        result = await session.execute(stmt)
+        blocks = result.fetchall()
+        # Type ignore: SQLAlchemy Row objects are compatible with tuple
+        return list(blocks)  # type: ignore
 
     async def _get_block_count(self, session: AsyncSession) -> int:
         """Get total count of blocks in the blocks table from START_DATE onwards."""
@@ -80,6 +108,11 @@ class BackfillAnalysisPBSV2:
             .select_from(BlockDB)
             .where(BlockDB.timestamp >= START_DATE)
         )
+
+        # Add END_DATE filter if specified
+        if END_DATE is not None:
+            stmt = stmt.where(BlockDB.timestamp <= END_DATE)
+
         result = await session.execute(stmt)
         return result.scalar_one()
 
@@ -235,30 +268,55 @@ class BackfillAnalysisPBSV2:
         self.logger.info("Creating tables if they don't exist...")
         await self.create_tables()
 
+        # Determine mode based on END_DATE
+        overwrite_mode = END_DATE is not None
+
         async with AsyncSessionLocal() as session:
             # Get total block count
             self.logger.info("Counting total blocks...")
             total_blocks = await self._get_block_count(session)
             self.logger.info(f"Total blocks in database: {total_blocks:,}")
 
-            # Get missing blocks
-            self.logger.info("Finding missing blocks...")
-            missing_blocks_result = await self._get_missing_blocks(session)
-            missing_blocks = [row[0] for row in missing_blocks_result]
-            self.logger.info(f"Found {len(missing_blocks):,} missing blocks")
+            # Get blocks to process based on mode
+            if overwrite_mode:
+                self.logger.info("OVERWRITE MODE: Getting all blocks in range...")
+                self.logger.info(f"Date range: {START_DATE} to {END_DATE}")
+                blocks_result = await self._get_blocks_in_range(session)
+                blocks_to_process = [row[0] for row in blocks_result]
+                self.logger.info(f"Found {len(blocks_to_process):,} blocks in range")
+                mode_description = "Overwriting all blocks in range"
+            else:
+                self.logger.info("Finding missing blocks...")
+                blocks_result = await self._get_missing_blocks(session)
+                blocks_to_process = [row[0] for row in blocks_result]
+                self.logger.info(f"Found {len(blocks_to_process):,} missing blocks")
+                mode_description = "Backfilling missing blocks"
 
-            if not missing_blocks:
-                self.console.print(
-                    "[yellow]No missing blocks to process - analysis_pbs_v2 is up to date[/yellow]"
-                )
+            if not blocks_to_process:
+                if overwrite_mode:
+                    self.console.print(
+                        "[yellow]No blocks found in specified date range[/yellow]"
+                    )
+                else:
+                    self.console.print(
+                        "[yellow]No missing blocks to process - analysis_pbs_v2 is up to date[/yellow]"
+                    )
                 return
 
-            total_missing = len(missing_blocks)
+            total_to_process = len(blocks_to_process)
 
+            # Display mode information
             self.console.print("[bold blue]Backfilling PBS Analysis Data[/bold blue]")
+            if overwrite_mode:
+                self.console.print("[yellow]Mode: OVERWRITE (END_DATE specified)[/yellow]")
+                self.console.print(f"[cyan]Date range: {START_DATE} to {END_DATE}[/cyan]")
+            else:
+                self.console.print("[cyan]Mode: Incremental (missing blocks only)[/cyan]")
+                self.console.print(f"[cyan]Start date: {START_DATE}[/cyan]")
+
             self.console.print(f"[cyan]Total blocks in range: {total_blocks:,}[/cyan]")
             self.console.print(
-                f"[cyan]Missing blocks to process: {total_missing:,}[/cyan]\n"
+                f"[cyan]Blocks to process: {total_to_process:,}[/cyan]\n"
             )
 
             # Create progress display
@@ -277,11 +335,11 @@ class BackfillAnalysisPBSV2:
             total_processed = 0
 
             with progress:
-                task_id = progress.add_task("Processing blocks", total=total_missing)
+                task_id = progress.add_task(mode_description, total=total_to_process)
 
                 # Process in batches
-                for i in range(0, total_missing, self.batch_size):
-                    batch = missing_blocks[i : i + self.batch_size]
+                for i in range(0, total_to_process, self.batch_size):
+                    batch = blocks_to_process[i : i + self.batch_size]
                     processed = await self._process_batch(
                         session, batch, progress, task_id
                     )

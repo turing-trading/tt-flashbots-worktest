@@ -49,9 +49,9 @@ async def test_blocks_with_no_transactions(async_session: AsyncSession):
 
     # Verify gas_used is 0 for empty blocks
     for block in empty_blocks:
-        assert (
-            block.gas_used == 0
-        ), f"Block {block.number} has 0 transactions but gas_used = {block.gas_used}"
+        assert block.gas_used == 0, (
+            f"Block {block.number} has 0 transactions but gas_used = {block.gas_used}"
+        )
 
 
 @pytest.mark.asyncio
@@ -88,7 +88,7 @@ async def test_vanilla_blocks_have_zero_relays(async_session: AsyncSession):
             AnalysisPBSDB.n_relays,
             AnalysisPBSDB.proposer_subsidy,
         )
-        .where(AnalysisPBSDB.is_block_vanilla == True)
+        .where(AnalysisPBSDB.is_block_vanilla.is_(True))
         .limit(100)
     )
     result = await async_session.execute(stmt)
@@ -98,12 +98,12 @@ async def test_vanilla_blocks_have_zero_relays(async_session: AsyncSession):
         pytest.skip("No vanilla blocks found in database")
 
     for block in vanilla_blocks:
-        assert (
-            block.n_relays == 0
-        ), f"Vanilla block {block.block_number} has non-zero n_relays: {block.n_relays}"
-        assert (
-            block.proposer_subsidy == 0.0
-        ), f"Vanilla block {block.block_number} has non-zero proposer_subsidy: {block.proposer_subsidy}"
+        assert block.n_relays == 0, (
+            f"Vanilla block {block.block_number} has non-zero n_relays: {block.n_relays}"
+        )
+        assert block.proposer_subsidy == 0.0, (
+            f"Vanilla block {block.block_number} has non-zero proposer_subsidy: {block.proposer_subsidy}"
+        )
 
 
 @pytest.mark.asyncio
@@ -148,7 +148,9 @@ async def test_very_small_eth_values(async_session: AsyncSession):
 
     # This is informational - small negative values from float precision
     if count > 0:
-        print(f"INFO: Found {count} blocks with tiny negative total_value (float precision)")
+        print(
+            f"INFO: Found {count} blocks with tiny negative total_value (float precision)"
+        )
 
 
 @pytest.mark.asyncio
@@ -237,9 +239,9 @@ async def test_hash_collision_detection(async_session: AsyncSession):
     result = await async_session.execute(stmt)
     hash_collisions = result.fetchall()
 
-    assert (
-        len(hash_collisions) == 0
-    ), f"CRITICAL: Found block hash collisions: {hash_collisions}"
+    assert len(hash_collisions) == 0, (
+        f"CRITICAL: Found block hash collisions: {hash_collisions}"
+    )
 
     # Check parent hashes pointing to different blocks
     stmt = text("""
@@ -276,14 +278,12 @@ async def test_timestamp_unix_epoch_boundaries(async_session: AsyncSession):
     result = await async_session.execute(stmt)
     too_early = result.scalar()
 
-    assert (
-        too_early == 0
-    ), f"Found {too_early} blocks with timestamps before Ethereum genesis"
+    assert too_early == 0, (
+        f"Found {too_early} blocks with timestamps before Ethereum genesis"
+    )
 
     stmt = (
-        select(func.count())
-        .select_from(BlockDB)
-        .where(BlockDB.timestamp > far_future)
+        select(func.count()).select_from(BlockDB).where(BlockDB.timestamp > far_future)
     )
     result = await async_session.execute(stmt)
     too_late = result.scalar()

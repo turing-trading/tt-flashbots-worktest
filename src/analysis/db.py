@@ -1,6 +1,15 @@
 """Database models for PBS analysis."""
 
-from sqlalchemy import ARRAY, BigInteger, Boolean, Column, DateTime, Float, Integer, String
+from sqlalchemy import (
+    ARRAY,
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    Integer,
+    String,
+)
 
 from src.helpers.db import Base
 
