@@ -1,8 +1,10 @@
 """Database connection helpers."""
 
 import os
+from typing import Any
 
 from dotenv import load_dotenv
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
@@ -57,3 +59,58 @@ AsyncSessionLocal = async_sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False,
 )
+
+
+async def upsert_model[DBModelType](
+    db_model_class: type[DBModelType],
+    pydantic_model: BaseModel,
+    primary_key_value: Any,
+    extra_fields: dict[str, Any] | None = None,
+) -> None:
+    """Generic upsert helper to insert or update a database record.
+
+    This function eliminates the need for manual attribute assignment and
+    type: ignore comments when working with SQLAlchemy models.
+
+    Args:
+        db_model_class: The SQLAlchemy model class (e.g., BlockDB, AnalysisPBSDB)
+        pydantic_model: The Pydantic model instance with data to upsert
+        primary_key_value: The primary key value (or tuple for composite keys)
+        extra_fields: Additional fields not in the Pydantic model (e.g., relay name)
+
+    Examples:
+        # Single primary key
+        await upsert_model(
+            db_model_class=AnalysisPBSDB,
+            pydantic_model=analysis,
+            primary_key_value=analysis.block_number,
+        )
+
+        # Composite primary key with extra fields
+        await upsert_model(
+            db_model_class=RelaysPayloadsDB,
+            pydantic_model=payload,
+            primary_key_value=(payload.slot, relay),
+            extra_fields={"relay": relay},
+        )
+    """
+    async with AsyncSessionLocal() as session:
+        # Check if record already exists
+        existing = await session.get(db_model_class, primary_key_value)
+
+        if existing:
+            # Update existing record with all fields from Pydantic model
+            for key, value in pydantic_model.model_dump().items():
+                setattr(existing, key, value)
+            # Also update extra fields if provided
+            if extra_fields:
+                for key, value in extra_fields.items():
+                    setattr(existing, key, value)
+        else:
+            # Insert new record using all fields from Pydantic model plus extra fields
+            data = pydantic_model.model_dump()
+            if extra_fields:
+                data.update(extra_fields)
+            session.add(db_model_class(**data))
+
+        await session.commit()

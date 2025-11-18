@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.analysis.constants import clean_builder_name
 from src.data.blocks.db import BlockDB
 from src.data.builders.db import BuilderIdentifiersCheckpoints, BuilderIdentifiersDB
 from src.data.relays.db import RelaysPayloadsDB
@@ -62,71 +63,16 @@ class BackfillBuilderIdentifiers:
             # Decode as UTF-8, strip null bytes
             builder_name = bytes_data.decode("utf-8", errors="ignore").strip("\x00")
 
-            # Clean up the builder name
-            builder_name = self._clean_builder_name(builder_name)
+            # Clean up the builder name using advanced cleaning
+            builder_name = clean_builder_name(
+                builder_name, apply_advanced_cleaning=True
+            )
 
             # Return cleaned string or 'unknown' if empty
             return builder_name if builder_name else "unknown"
         except Exception:
             # If parsing fails, return 'unknown'
             return "unknown"
-
-    def _clean_builder_name(self, name: str) -> str:
-        """Clean builder name by removing emojis and extracting domain/pool names.
-
-        Args:
-            name: Raw builder name string
-
-        Returns:
-            Cleaned builder name
-        """
-        import re
-
-        # Remove emojis and other non-ASCII characters (keep only printable ASCII)
-        # This removes characters like ✨, 🚀, etc.
-        cleaned = "".join(c for c in name if ord(c) < 128 and c.isprintable())
-
-        # Strip whitespace
-        cleaned = cleaned.strip()
-
-        # First, try to extract content from parentheses (e.g., "Quasar (quasar.win)" -> "quasar.win")
-        paren_match = re.search(r"\(([^)]+)\)", cleaned)
-        if paren_match:
-            cleaned = paren_match.group(1)
-
-        # Extract domain/pool names from slash-separated patterns like "EU2/pool.binance.com/"
-        # Take the part after the last "/" that contains a domain or name
-        if "/" in cleaned:
-            # Split by "/" and get the last non-empty part
-            parts = [p for p in cleaned.split("/") if p]
-            if parts:
-                # Take the last part which should be the domain/pool name
-                cleaned = parts[-1]
-
-        # For domain-like strings (containing dots), extract just the domain part
-        # This handles "poolin.com!c" -> "poolin.com", "BTC.com#" -> "BTC.com", "poolin.comHN" -> "poolin.com"
-        if "." in cleaned:
-            # Match common TLDs precisely - the pattern stops at the TLD
-            # No \b needed because we just want to match up to and including the TLD
-            tld_pattern = r"([a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*\.(?:com|net|org|io|win|xyz|eth|pool|info|co|uk|de|fr|cn|jp))"
-            domain_match = re.match(tld_pattern, cleaned)
-            if domain_match:
-                cleaned = domain_match.group(1)
-
-        # Remove trailing and leading special characters (but keep dots, hyphens, underscores in the middle)
-        cleaned = re.sub(r"^[^a-zA-Z0-9]+|[^a-zA-Z0-9.]+$", "", cleaned)
-
-        # Remove trailing numbers and mixed alphanumeric suffixes (e.g., "speth22" -> "speth", "speth03e" -> "speth")
-        cleaned = re.sub(r"[0-9]+[a-z0-9]*$", "", cleaned)
-
-        # Final cleanup: strip any remaining whitespace
-        cleaned = cleaned.strip()
-
-        # If the result is a single character or empty, return "unknown"
-        if len(cleaned) <= 1:
-            return "unknown"
-
-        return cleaned
 
     async def _get_checkpoint(self, session: AsyncSession) -> tuple[int, int] | None:
         """Get the latest checkpoint.

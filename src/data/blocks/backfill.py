@@ -27,6 +27,7 @@ from src.data.blocks.db import BlockCheckpoints, BlockDB
 from src.data.blocks.models import Block
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
+from src.helpers.parsers import parse_hex_int, parse_hex_timestamp, wei_to_eth
 
 load_dotenv()
 
@@ -339,10 +340,10 @@ class BackfillBlocks:
             block_data = result["result"]
 
             # Convert RPC response to Block model
-            timestamp = datetime.fromtimestamp(int(block_data["timestamp"], 16))
+            timestamp = parse_hex_timestamp(block_data["timestamp"])
 
             return Block(
-                number=int(block_data["number"], 16),
+                number=parse_hex_int(block_data["number"]),
                 hash=block_data["hash"],
                 parent_hash=block_data["parentHash"],
                 nonce=block_data["nonce"],
@@ -351,14 +352,14 @@ class BackfillBlocks:
                 state_root=block_data["stateRoot"],
                 receipts_root=block_data["receiptsRoot"],
                 miner=block_data["miner"],
-                size=int(block_data["size"], 16),
+                size=parse_hex_int(block_data["size"]),
                 extra_data=block_data["extraData"],
-                gas_limit=int(block_data["gasLimit"], 16),
-                gas_used=int(block_data["gasUsed"], 16),
+                gas_limit=parse_hex_int(block_data["gasLimit"]),
+                gas_used=parse_hex_int(block_data["gasUsed"]),
                 timestamp=timestamp,
                 transaction_count=len(block_data.get("transactions", [])),
-                base_fee_per_gas=(
-                    int(block_data["baseFeePerGas"], 16)
+                base_fee_per_gas=wei_to_eth(
+                    parse_hex_int(block_data["baseFeePerGas"])
                     if "baseFeePerGas" in block_data
                     else None
                 ),
@@ -428,10 +429,10 @@ class BackfillBlocks:
 
                 try:
                     # Convert RPC response to Block model
-                    timestamp = datetime.fromtimestamp(int(block_data["timestamp"], 16))
+                    timestamp = parse_hex_timestamp(block_data["timestamp"])
 
                     block = Block(
-                        number=int(block_data["number"], 16),
+                        number=parse_hex_int(block_data["number"]),
                         hash=block_data["hash"],
                         parent_hash=block_data["parentHash"],
                         nonce=block_data["nonce"],
@@ -440,14 +441,14 @@ class BackfillBlocks:
                         state_root=block_data["stateRoot"],
                         receipts_root=block_data["receiptsRoot"],
                         miner=block_data["miner"],
-                        size=int(block_data["size"], 16),
+                        size=parse_hex_int(block_data["size"]),
                         extra_data=block_data["extraData"],
-                        gas_limit=int(block_data["gasLimit"], 16),
-                        gas_used=int(block_data["gasUsed"], 16),
+                        gas_limit=parse_hex_int(block_data["gasLimit"]),
+                        gas_used=parse_hex_int(block_data["gasUsed"]),
                         timestamp=timestamp,
                         transaction_count=len(block_data.get("transactions", [])),
-                        base_fee_per_gas=(
-                            int(block_data["baseFeePerGas"], 16)
+                        base_fee_per_gas=wei_to_eth(
+                            parse_hex_int(block_data["baseFeePerGas"])
                             if "baseFeePerGas" in block_data
                             else None
                         ),

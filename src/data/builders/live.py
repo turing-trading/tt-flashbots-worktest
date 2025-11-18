@@ -12,9 +12,11 @@ from sqlalchemy import select
 
 from src.data.blocks.db import BlockDB
 from src.data.builders.db import BuilderIdentifiersDB
+from src.data.builders.models import BuilderIdentifier
 from src.data.relays.db import RelaysPayloadsDB
-from src.helpers.db import AsyncSessionLocal
+from src.helpers.db import AsyncSessionLocal, upsert_model
 from src.helpers.logging import get_logger
+from src.helpers.parsers import parse_hex_block_number, parse_hex_timestamp
 
 
 class LiveBuilderProcessor:
@@ -110,27 +112,19 @@ class LiveBuilderProcessor:
             builder_name: Builder name.
         """
         try:
-            async with AsyncSessionLocal() as session:
-                # Check if identifier already exists
-                existing = await session.get(BuilderIdentifiersDB, builder_pubkey)
-
-                if existing:
-                    # Update existing identifier
-                    existing.builder_name = builder_name  # type: ignore
-                else:
-                    # Insert new identifier
-                    session.add(
-                        BuilderIdentifiersDB(
-                            builder_pubkey=builder_pubkey,
-                            builder_name=builder_name,
-                        )
-                    )
-
-                await session.commit()
-                self.identifiers_processed += 1
-                self.logger.info(
-                    f"Stored builder identifier: {builder_name} ({builder_pubkey[:10]}...)"
-                )
+            identifier = BuilderIdentifier(
+                builder_pubkey=builder_pubkey,
+                builder_name=builder_name,
+            )
+            await upsert_model(
+                db_model_class=BuilderIdentifiersDB,
+                pydantic_model=identifier,
+                primary_key_value=builder_pubkey,
+            )
+            self.identifiers_processed += 1
+            self.logger.info(
+                f"Stored builder identifier: {builder_name} ({builder_pubkey[:10]}...)"
+            )
 
         except Exception as e:
             self.logger.error(f"Failed to store builder identifier: {e}")
@@ -145,7 +139,7 @@ class LiveBuilderProcessor:
                 header = await self.queue.get()
 
                 # Extract block number
-                block_number = int(header.get("number", "0x0"), 16)
+                block_number = parse_hex_block_number(header)
                 timestamp = header.get("timestamp")
                 if not timestamp:
                     error_msg = "No timestamp in block header"
@@ -155,9 +149,7 @@ class LiveBuilderProcessor:
                 # Wait 1 minute for blocks to be processed
                 time_to_wait = (
                     60
-                    - (
-                        datetime.now() - datetime.fromtimestamp(int(timestamp, 16))
-                    ).total_seconds()
+                    - (datetime.now() - parse_hex_timestamp(timestamp)).total_seconds()
                 )
                 if time_to_wait > 0:
                     await asyncio.sleep(time_to_wait)

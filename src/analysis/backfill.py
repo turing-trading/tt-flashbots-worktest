@@ -26,6 +26,7 @@ from src.data.proposers.db import ProposerBalancesDB
 from src.data.relays.db import RelaysPayloadsDB
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
+from src.helpers.parsers import wei_to_eth
 
 START_DATE = datetime(2022, 1, 1, 0, 0, 0)
 
@@ -138,17 +139,9 @@ class BackfillAnalysisPBS:
             # Filter out None values from relays array
             relays = [r for r in (row.relays or []) if r is not None]
 
-            # Convert Wei to ETH by dividing by 1e18
-            builder_balance_increase = (
-                float(row.builder_balance_increase) / 1e18
-                if row.builder_balance_increase is not None
-                else None
-            )
-            proposer_subsidy = (
-                float(row.proposer_subsidy) / 1e18
-                if row.proposer_subsidy is not None
-                else None
-            )
+            # Convert Wei to ETH using helper
+            builder_balance_increase = wei_to_eth(row.builder_balance_increase)
+            proposer_subsidy = wei_to_eth(row.proposer_subsidy)
 
             aggregated_data.append(
                 {

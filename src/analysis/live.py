@@ -17,8 +17,9 @@ from src.data.blocks.db import BlockDB
 from src.data.builders.db import BuilderIdentifiersDB
 from src.data.proposers.db import ProposerBalancesDB
 from src.data.relays.db import RelaysPayloadsDB
-from src.helpers.db import AsyncSessionLocal
+from src.helpers.db import AsyncSessionLocal, upsert_model
 from src.helpers.logging import get_logger
+from src.helpers.parsers import parse_hex_block_number, parse_hex_timestamp, wei_to_eth
 
 logger = get_logger(__name__)
 
@@ -93,21 +94,13 @@ class LiveAnalysisProcessor:
                 return AnalysisPBS(
                     block_number=row.block_number,
                     block_timestamp=row.block_timestamp,
-                    builder_balance_increase=(
-                        float(row.builder_balance_increase) / 1e18
-                        if row.builder_balance_increase is not None
-                        else None
-                    ),
+                    builder_balance_increase=wei_to_eth(row.builder_balance_increase),
                     relays=(
                         [r for r in row.relays if r is not None]
                         if row.relays is not None
                         else None
                     ),
-                    proposer_subsidy=(
-                        float(row.proposer_subsidy) / 1e18
-                        if row.proposer_subsidy is not None
-                        else None
-                    ),
+                    proposer_subsidy=wei_to_eth(row.proposer_subsidy),
                     builder_name=clean_builder_name(row.builder_name),
                 )
 
@@ -122,35 +115,13 @@ class LiveAnalysisProcessor:
             analysis: AnalysisPBS model to store.
         """
         try:
-            async with AsyncSessionLocal() as session:
-                # Check if analysis already exists
-                existing = await session.get(AnalysisPBSDB, analysis.block_number)
-
-                if existing:
-                    # Update existing analysis
-                    existing.block_timestamp = analysis.block_timestamp  # type: ignore
-                    existing.builder_balance_increase = (  # type: ignore
-                        analysis.builder_balance_increase
-                    )
-                    existing.relays = analysis.relays  # type: ignore
-                    existing.proposer_subsidy = analysis.proposer_subsidy  # type: ignore
-                    existing.builder_name = analysis.builder_name  # type: ignore
-                else:
-                    # Insert new analysis
-                    session.add(
-                        AnalysisPBSDB(
-                            block_number=analysis.block_number,
-                            block_timestamp=analysis.block_timestamp,
-                            builder_balance_increase=analysis.builder_balance_increase,
-                            relays=analysis.relays,
-                            proposer_subsidy=analysis.proposer_subsidy,
-                            builder_name=analysis.builder_name,
-                        )
-                    )
-
-                await session.commit()
-                self.analyses_processed += 1
-                logger.info(f"Stored PBS analysis for block #{analysis.block_number}")
+            await upsert_model(
+                db_model_class=AnalysisPBSDB,
+                pydantic_model=analysis,
+                primary_key_value=analysis.block_number,
+            )
+            self.analyses_processed += 1
+            logger.info(f"Stored PBS analysis for block #{analysis.block_number}")
 
         except Exception as e:
             logger.error(
@@ -167,7 +138,7 @@ class LiveAnalysisProcessor:
                 header = await self.queue.get()
 
                 # Extract block number
-                block_number = int(header.get("number", "0x0"), 16)
+                block_number = parse_hex_block_number(header)
                 timestamp = header.get("timestamp")
 
                 if not timestamp:
@@ -178,9 +149,7 @@ class LiveAnalysisProcessor:
                 # Wait 15 minutes for blocks to be processed
                 time_to_wait = (
                     15 * 60
-                    - (
-                        datetime.now() - datetime.fromtimestamp(int(timestamp, 16))
-                    ).total_seconds()
+                    - (datetime.now() - parse_hex_timestamp(timestamp)).total_seconds()
                 )
                 if time_to_wait > 0:
                     await asyncio.sleep(time_to_wait)

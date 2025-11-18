@@ -13,8 +13,9 @@ from dotenv import load_dotenv
 
 from src.data.proposers.db import ProposerBalancesDB
 from src.data.proposers.models import ProposerBalance
-from src.helpers.db import AsyncSessionLocal
+from src.helpers.db import upsert_model
 from src.helpers.logging import get_logger
+from src.helpers.parsers import parse_hex_block_number, wei_to_eth
 
 load_dotenv()
 
@@ -119,34 +120,17 @@ class LiveProposerProcessor:
             balance: ProposerBalance model to store.
         """
         try:
-            async with AsyncSessionLocal() as session:
-                # Check if balance record already exists
-                existing = await session.get(ProposerBalancesDB, balance.block_number)
-
-                if existing:
-                    # Update existing record
-                    existing.miner = balance.miner  # type: ignore
-                    existing.balance_before = balance.balance_before  # type: ignore
-                    existing.balance_after = balance.balance_after  # type: ignore
-                    existing.balance_increase = balance.balance_increase  # type: ignore
-                else:
-                    # Insert new record
-                    session.add(
-                        ProposerBalancesDB(
-                            block_number=balance.block_number,
-                            miner=balance.miner,
-                            balance_before=balance.balance_before,
-                            balance_after=balance.balance_after,
-                            balance_increase=balance.balance_increase,
-                        )
-                    )
-
-                await session.commit()
-                self.balances_processed += 1
-                logger.info(
-                    f"Stored proposer balance for block #{balance.block_number}: "
-                    f"{balance.balance_increase / 1e18:.6f} ETH"
-                )
+            await upsert_model(
+                db_model_class=ProposerBalancesDB,
+                pydantic_model=balance,
+                primary_key_value=balance.block_number,
+            )
+            self.balances_processed += 1
+            balance_eth = wei_to_eth(balance.balance_increase)
+            logger.info(
+                f"Stored proposer balance for block #{balance.block_number}: "
+                f"{balance_eth:.6f} ETH"
+            )
 
         except Exception as e:
             logger.error(
@@ -163,7 +147,7 @@ class LiveProposerProcessor:
                 header = await self.queue.get()
 
                 # Extract block number and miner
-                block_number = int(header.get("number", "0x0"), 16)
+                block_number = parse_hex_block_number(header)
                 miner = header.get("miner")
 
                 if not miner:

@@ -13,8 +13,9 @@ import httpx
 from src.data.relays.constants import RELAYS
 from src.data.relays.db import RelaysPayloadsDB
 from src.data.relays.models import RelaysPayloads
-from src.helpers.db import AsyncSessionLocal
+from src.helpers.db import upsert_model
 from src.helpers.logging import get_logger
+from src.helpers.parsers import parse_hex_block_number, parse_hex_timestamp
 
 
 class LiveRelayProcessor:
@@ -128,46 +129,16 @@ class LiveRelayProcessor:
             payload: RelaysPayloads model to store.
         """
         try:
-            async with AsyncSessionLocal() as session:
-                # Check if payload already exists
-                from sqlalchemy import select
-
-                stmt = (
-                    select(RelaysPayloadsDB)
-                    .where(RelaysPayloadsDB.block_number == payload.block_number)
-                    .where(RelaysPayloadsDB.relay == relay)
-                )
-                result = await session.execute(stmt)
-                existing = result.scalar_one_or_none()
-
-                if existing:
-                    # Update existing payload
-                    for key, value in payload.model_dump().items():
-                        setattr(existing, key, value)
-                else:
-                    # Insert new payload
-                    session.add(
-                        RelaysPayloadsDB(
-                            relay=relay,
-                            slot=payload.slot,
-                            parent_hash=payload.parent_hash,
-                            block_hash=payload.block_hash,
-                            builder_pubkey=payload.builder_pubkey,
-                            proposer_pubkey=payload.proposer_pubkey,
-                            proposer_fee_recipient=payload.proposer_fee_recipient,
-                            gas_limit=payload.gas_limit,
-                            gas_used=payload.gas_used,
-                            value=payload.value,
-                            block_number=payload.block_number,
-                            num_tx=payload.num_tx,
-                        )
-                    )
-
-                await session.commit()
-                self.payloads_processed += 1
-                self.logger.info(
-                    f"Stored relay payload from {relay} for block #{payload.block_number}"
-                )
+            await upsert_model(
+                db_model_class=RelaysPayloadsDB,
+                pydantic_model=payload,
+                primary_key_value=(payload.slot, relay),
+                extra_fields={"relay": relay},
+            )
+            self.payloads_processed += 1
+            self.logger.info(
+                f"Stored relay payload from {relay} for block #{payload.block_number}"
+            )
 
         except Exception as e:
             self.logger.error(f"Failed to store relay payload from {relay}: {e}")
@@ -190,15 +161,13 @@ class LiveRelayProcessor:
                 # This ensures relays have processed and made the data available
                 time_to_wait = (
                     13 * 60
-                    - (
-                        datetime.now() - datetime.fromtimestamp(int(timestamp, 16))
-                    ).total_seconds()
+                    - (datetime.now() - parse_hex_timestamp(timestamp)).total_seconds()
                 )
                 if time_to_wait > 0:
                     await asyncio.sleep(time_to_wait)
 
                 # Extract block number
-                block_number = int(header.get("number", "0x0"), 16)
+                block_number = parse_hex_block_number(header)
 
                 # Fetch payloads from all relays
                 relay_payloads = await self.fetch_all_relays(block_number)

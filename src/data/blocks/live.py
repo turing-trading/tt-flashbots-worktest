@@ -6,7 +6,6 @@ Fetches full block data from ETH_RPC_URL to get additional fields like extra_dat
 
 import asyncio
 import os
-from datetime import datetime
 from typing import Any
 
 import httpx
@@ -14,8 +13,14 @@ from dotenv import load_dotenv
 
 from src.data.blocks.db import BlockDB
 from src.data.blocks.models import Block
-from src.helpers.db import AsyncSessionLocal
+from src.helpers.db import upsert_model
 from src.helpers.logging import get_logger
+from src.helpers.parsers import (
+    parse_hex_block_number,
+    parse_hex_int,
+    parse_hex_timestamp,
+    wei_to_eth,
+)
 
 load_dotenv()
 
@@ -86,7 +91,7 @@ class LiveBlockProcessor:
         """
         try:
             return Block(
-                number=int(block_data["number"], 16),
+                number=parse_hex_int(block_data["number"]),
                 hash=block_data["hash"],
                 parent_hash=block_data["parentHash"],
                 nonce=block_data["nonce"],
@@ -95,14 +100,14 @@ class LiveBlockProcessor:
                 state_root=block_data["stateRoot"],
                 receipts_root=block_data["receiptsRoot"],
                 miner=block_data["miner"],
-                size=int(block_data["size"], 16),
+                size=parse_hex_int(block_data["size"]),
                 extra_data=block_data["extraData"],
-                gas_limit=int(block_data["gasLimit"], 16),
-                gas_used=int(block_data["gasUsed"], 16),
-                timestamp=datetime.fromtimestamp(int(block_data["timestamp"], 16)),
+                gas_limit=parse_hex_int(block_data["gasLimit"]),
+                gas_used=parse_hex_int(block_data["gasUsed"]),
+                timestamp=parse_hex_timestamp(block_data["timestamp"]),
                 transaction_count=len(block_data.get("transactions", [])),
-                base_fee_per_gas=(
-                    int(block_data["baseFeePerGas"], 16) / 1e18
+                base_fee_per_gas=wei_to_eth(
+                    parse_hex_int(block_data["baseFeePerGas"])
                     if "baseFeePerGas" in block_data
                     else None
                 ),
@@ -118,40 +123,13 @@ class LiveBlockProcessor:
             block: Block model to store.
         """
         try:
-            async with AsyncSessionLocal() as session:
-                # Check if block already exists
-                existing = await session.get(BlockDB, block.number)
-
-                if existing:
-                    # Update existing block
-                    for key, value in block.model_dump().items():
-                        setattr(existing, key, value)
-                else:
-                    # Insert new block
-                    session.add(
-                        BlockDB(
-                            number=block.number,
-                            hash=block.hash,
-                            parent_hash=block.parent_hash,
-                            nonce=block.nonce,
-                            sha3_uncles=block.sha3_uncles,
-                            transactions_root=block.transactions_root,
-                            state_root=block.state_root,
-                            receipts_root=block.receipts_root,
-                            miner=block.miner,
-                            size=block.size,
-                            extra_data=block.extra_data,
-                            gas_limit=block.gas_limit,
-                            gas_used=block.gas_used,
-                            timestamp=block.timestamp,
-                            transaction_count=block.transaction_count,
-                            base_fee_per_gas=block.base_fee_per_gas,
-                        )
-                    )
-
-                await session.commit()
-                self.blocks_processed += 1
-                logger.info(f"Stored block #{block.number}")
+            await upsert_model(
+                db_model_class=BlockDB,
+                pydantic_model=block,
+                primary_key_value=block.number,
+            )
+            self.blocks_processed += 1
+            logger.info(f"Stored block #{block.number}")
 
         except Exception as e:
             logger.error(f"Failed to store block {block.number}: {e}")
@@ -166,7 +144,7 @@ class LiveBlockProcessor:
                 header = await self.queue.get()
 
                 # Extract block number
-                block_number = int(header.get("number", "0x0"), 16)
+                block_number = parse_hex_block_number(header)
 
                 # Fetch full block data
                 full_block = await self.fetch_full_block(block_number)
