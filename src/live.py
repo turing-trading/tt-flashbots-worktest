@@ -243,14 +243,14 @@ class LiveProcessor:
                 block_number, miner_address
             )
 
-            # Stage 3: Fetch/insert relay payloads (with smart waiting)
-            relay_data = await self._store_relay_payloads_with_retry(
-                block_number, timestamp
-            )
-
-            # Stage 4: Fetch extra builder balances (for V3)
+            # Stage 3: Fetch extra builder balances (for V3)
             extra_builder_data = await self._fetch_extra_builder_balances(
                 block_number, miner_address
+            )
+
+            # Stage 4: Fetch/insert relay payloads (with smart waiting)
+            relay_data = await self._store_relay_payloads_with_retry(
+                block_number, timestamp
             )
 
             # Stage 5: Fetch Ultrasound adjustment if applicable
@@ -836,8 +836,8 @@ class LiveProcessor:
                     if d["balance_increase"] > 0
                 ]
                 if positive_transfers:
-                    builder_extra_transfers = (
-                        sum(wei_to_eth(t) or 0.0 for t in positive_transfers)
+                    builder_extra_transfers = sum(
+                        wei_to_eth(t) or 0.0 for t in positive_transfers
                     )
 
             # Get relay fee from adjustment data (if available)
@@ -847,11 +847,11 @@ class LiveProcessor:
 
             # Calculate total value including all components
             total_value = (
-                builder_balance_increase
-                + proposer_subsidy
-                + (relay_fee or 0.0)
-                + builder_extra_transfers
+                builder_balance_increase + proposer_subsidy + (relay_fee or 0.0)
             )
+
+            if total_value < 0 and builder_extra_transfers > 0:
+                total_value += builder_extra_transfers
 
             # Parse builder name from extra_data
             builder_name = parse_builder_name_from_extra_data(extra_data)

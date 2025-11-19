@@ -29,7 +29,9 @@ from src.helpers.logging import get_logger
 from src.helpers.parsers import wei_to_eth
 
 # Default to process last year of data
-START_DATE = datetime.now() - timedelta(days=90)
+START_DATE = datetime.now() - timedelta(days=365 * 5)
+# 2024-01-01
+# START_DATE = datetime(2024, 2, 1)
 END_DATE = datetime.now() - timedelta(minutes=10)
 
 
@@ -127,15 +129,12 @@ class BackfillAnalysisPBSV3:
 
         # Build the aggregation query with all V3 fields
         # Note: We use CASE WHEN to filter only positive balance increases for builder_extra_transfers
-        stmt = (
+
+        # Create subquery for extra builder transfers to avoid Cartesian product with relays
+        # (each relay entry would multiply the extra transfers count)
+        extra_transfers_subq = (
             select(
-                BlockDB.number.label("block_number"),
-                BlockDB.timestamp.label("block_timestamp"),
-                BlockDB.extra_data.label("extra_data"),
-                ProposerBalancesDB.balance_increase.label("builder_balance_increase"),
-                func.array_agg(RelaysPayloadsDB.relay).label("relays"),
-                func.max(RelaysPayloadsDB.value).label("proposer_subsidy"),
-                func.min(RelaysPayloadsDB.slot).label("slot"),
+                ExtraBuilderBalanceDB.block_number,
                 func.sum(
                     case(
                         (
@@ -145,6 +144,24 @@ class BackfillAnalysisPBSV3:
                         else_=0,
                     )
                 ).label("builder_extra_transfers_wei"),
+            )
+            .where(ExtraBuilderBalanceDB.block_number.in_(block_numbers))
+            .group_by(ExtraBuilderBalanceDB.block_number)
+            .subquery()
+        )
+
+        stmt = (
+            select(
+                BlockDB.number.label("block_number"),
+                BlockDB.timestamp.label("block_timestamp"),
+                BlockDB.extra_data.label("extra_data"),
+                ProposerBalancesDB.balance_increase.label("builder_balance_increase"),
+                func.array_agg(RelaysPayloadsDB.relay).label("relays"),
+                func.max(RelaysPayloadsDB.value).label("proposer_subsidy"),
+                func.min(RelaysPayloadsDB.slot).label("slot"),
+                extra_transfers_subq.c.builder_extra_transfers_wei.label(
+                    "builder_extra_transfers_wei"
+                ),
                 func.max(UltrasoundAdjustmentDB.delta).label("relay_fee_wei"),
             )
             .select_from(BlockDB)
@@ -156,8 +173,8 @@ class BackfillAnalysisPBSV3:
                 RelaysPayloadsDB, BlockDB.number == RelaysPayloadsDB.block_number
             )
             .outerjoin(
-                ExtraBuilderBalanceDB,
-                BlockDB.number == ExtraBuilderBalanceDB.block_number,
+                extra_transfers_subq,
+                BlockDB.number == extra_transfers_subq.c.block_number,
             )
             .outerjoin(
                 UltrasoundAdjustmentDB,
@@ -169,6 +186,7 @@ class BackfillAnalysisPBSV3:
                 BlockDB.timestamp,
                 BlockDB.extra_data,
                 ProposerBalancesDB.balance_increase,
+                extra_transfers_subq.c.builder_extra_transfers_wei,
             )
         )
 
@@ -202,11 +220,11 @@ class BackfillAnalysisPBSV3:
 
             # Calculate total value including all components (treat None relay_fee as 0)
             total_value = (
-                builder_balance_increase
-                + proposer_subsidy
-                + (relay_fee or 0.0)
-                + builder_extra_transfers
+                builder_balance_increase + proposer_subsidy + (relay_fee or 0.0)
             )
+
+            if total_value < 0 and builder_extra_transfers > 0:
+                total_value += builder_extra_transfers
 
             aggregated_data.append(
                 {

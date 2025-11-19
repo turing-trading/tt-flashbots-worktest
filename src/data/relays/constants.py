@@ -11,9 +11,9 @@ RELAYS = [
     "aestus.live",
     "boost-relay.flashbots.net",
     "relay.ethgas.com",
-    # "relay.btcs.com",
-    # "relay.wenmerge.com",
-    # "mainnet-relay.securerpc.com",
+    "relay.btcs.com",
+    "relay.wenmerge.com",
+    "mainnet-relay.securerpc.com",
 ]
 
 # Relay name remapping for storage
