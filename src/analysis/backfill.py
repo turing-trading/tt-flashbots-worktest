@@ -31,7 +31,7 @@ from src.helpers.parsers import wei_to_eth
 # START_DATE = datetime(2025, 10, 10, 20, 28, 28)
 # END_DATE = datetime(2025, 11, 7, 13, 30, 57)
 
-START_DATE = datetime.now() - timedelta(days=1)
+START_DATE = datetime.now() - timedelta(days=365)
 END_DATE = datetime.now() - timedelta(minutes=10)
 
 

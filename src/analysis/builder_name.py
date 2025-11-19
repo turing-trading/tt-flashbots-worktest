@@ -28,11 +28,32 @@ BUILDER_NAME_MAPPING = {
     "rsyncbuilder": "Rsync",
     # Bob The Builder variants
     "bobTheBuilder.xyz": "Bob The Builder",
-    "By @builder0x69": "Bob The Builder",
-    "By builder0x69": "Bob The Builder",
+    # 0x69 builder variants
+    "by @builder": "0x69",
+    "by builder": "0x69",
+    # IO Builder variants
+    "iobuilder.xyz": "IO Builder",
+    # Eureka variants
+    "eurekabuilder.xyz": "Eureka",
+    # Bitget variants
+    "www.bitget.com": "Bitget",
+    # Turbo variants
+    "rpc.turbobuilder.xyz": "Turbo",
+    # BTCS variants
+    "Builder+ btcs.com | ethgas.com": "BTCS",
+    # DexPeer variants
+    "DexPeer Builder": "DexPeer",
+    # BuildAI variants
+    "buildai.net": "BuildAI",
+    # Snail variants
+    "snailbuilder.sh": "Snail",
+    # Besu variants (development versions)
+    "besu-develop-": "besu",
+    "besu-develop-e": "besu",
     # bloXroute -> bloXroute (standardize capitalization)
     # Generic/unknown builders
     "builder": "unknown",
+    "MevRefund -": "unknown",  # Troll message, not a real builder
     "": "unknown",
 }
 
