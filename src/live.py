@@ -183,7 +183,7 @@ class LiveProcessor:
                         await asyncio.wait_for(
                             self.headers_queue.put(block_header), timeout=1.0
                         )
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.warning(
                             f"Queue full, dropping block #{self.last_block_number}"
                         )
@@ -208,7 +208,7 @@ class LiveProcessor:
                 # Mark task as done
                 self.headers_queue.task_done()
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # No item in queue, continue to check shutdown flag
                 continue
             except asyncio.CancelledError:
@@ -400,17 +400,15 @@ class LiveProcessor:
     async def _store_relay_payloads_with_retry(
         self, block_number: int, timestamp: datetime
     ) -> list[dict[str, Any]]:
-        """Store relay payloads with immediate fetch and delayed retries.
+        """Store relay payloads with delayed retries only (no immediate fetch).
 
-        Try immediate fetch first. If no data found, wait 5 minutes then retry every minute:
-        - 0:00 - Immediate fetch
-        - If no data:
-          - 5:00 - Retry (after 5 min wait)
-          - 6:00 - Retry (after 1 min wait)
-          - 7:00 - Retry (after 1 min wait)
-          - 8:00 - Retry (after 1 min wait)
-          - 9:00 - Retry (after 1 min wait)
-          - 10:00 - Final retry (after 1 min wait)
+        Wait 5 minutes first, then try fetching every minute until 10 minutes total:
+        - 5:00 - First fetch (after 5 min wait)
+        - 6:00 - Retry (after 1 min wait)
+        - 7:00 - Retry (after 1 min wait)
+        - 8:00 - Retry (after 1 min wait)
+        - 9:00 - Retry (after 1 min wait)
+        - 10:00 - Final retry (after 1 min wait)
         - STOP after 10 minutes total
 
         Args:
@@ -420,20 +418,13 @@ class LiveProcessor:
         Returns:
             List of relay data dictionaries.
         """
-        # Try immediate fetch first
-        relay_data = await self._store_relay_payloads(block_number)
-
-        if relay_data:
-            return relay_data
-
-        # No data found, start delayed retry logic
+        relay_data: list[dict[str, Any]] = []
         max_total_minutes = 10
         initial_wait_minutes = 5
 
-        # Wait 5 minutes before first retry
+        # Wait 5 minutes before first fetch attempt
         logger.info(
-            f"Block #{block_number}: No relay data found, "
-            f"waiting {initial_wait_minutes}m before retrying"
+            f"Block #{block_number}: Waiting {initial_wait_minutes}m before fetching relay data"
         )
         await asyncio.sleep(initial_wait_minutes * 60)
 

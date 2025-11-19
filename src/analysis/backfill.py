@@ -1,7 +1,7 @@
 """Backfill PBS analysis data by aggregating from blocks, proposers_balance, and relays_payloads."""
 
 from asyncio import run
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from rich.console import Console
 from rich.progress import (
@@ -28,8 +28,11 @@ from src.helpers.logging import get_logger
 from src.helpers.parsers import wei_to_eth
 
 # {"from":"2025-10-10 20:28:28","to":"2025-11-07 13:30:57"}
-START_DATE = datetime(2025, 10, 10, 20, 28, 28)
-END_DATE = datetime(2025, 11, 7, 13, 30, 57)
+# START_DATE = datetime(2025, 10, 10, 20, 28, 28)
+# END_DATE = datetime(2025, 11, 7, 13, 30, 57)
+
+START_DATE = datetime.now() - timedelta(days=10)
+END_DATE = datetime.now()
 
 
 class BackfillAnalysisPBSV2:
@@ -62,11 +65,7 @@ class BackfillAnalysisPBSV2:
             AnalysisPBSV2DB.block_number == BlockDB.number
         )
 
-        stmt = (
-            select(BlockDB.number)
-            .where(~subquery.exists())
-            .where(BlockDB.timestamp >= START_DATE)
-        )
+        stmt = select(BlockDB.number).where(~subquery.exists())
 
         # Add END_DATE filter if specified
         if END_DATE is not None:
@@ -269,13 +268,12 @@ class BackfillAnalysisPBSV2:
         overwrite_mode = END_DATE is not None
 
         async with AsyncSessionLocal() as session:
-            # Get total block count
-            self.logger.info("Counting total blocks...")
-            total_blocks = await self._get_block_count(session)
-            self.logger.info(f"Total blocks in database: {total_blocks:,}")
-
             # Get blocks to process based on mode
             if overwrite_mode:
+                self.logger.info("Counting total blocks...")
+                total_blocks = await self._get_block_count(session)
+                self.logger.info(f"Total blocks in database: {total_blocks:,}")
+
                 self.logger.info("OVERWRITE MODE: Getting all blocks in range...")
                 self.logger.info(f"Date range: {START_DATE} to {END_DATE}")
                 blocks_result = await self._get_blocks_in_range(session)
@@ -316,11 +314,6 @@ class BackfillAnalysisPBSV2:
                     "[cyan]Mode: Incremental (missing blocks only)[/cyan]"
                 )
                 self.console.print(f"[cyan]Start date: {START_DATE}[/cyan]")
-
-            self.console.print(f"[cyan]Total blocks in range: {total_blocks:,}[/cyan]")
-            self.console.print(
-                f"[cyan]Blocks to process: {total_to_process:,}[/cyan]\n"
-            )
 
             # Create progress display
             progress = Progress(
