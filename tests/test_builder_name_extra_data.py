@@ -8,7 +8,6 @@ import pytest
 
 from src.analysis.builder_name import parse_builder_name_from_extra_data
 
-
 # All 300 test cases from extra_data_test.txt
 # Format: (hex_extra_data, expected_builder_name)
 TEST_CASES = [
@@ -22,7 +21,7 @@ TEST_CASES = [
     ("0x4e65746865726d696e64", "BuilderNet (Nethermind)"),
     ("0x7273796e632d6275696c6465722e78797a", "rsync-builder.xyz"),
     ("0x", "unknown"),
-    ("0x4275696c6465722b207777772e627463732e636f6d2f6275696c646572", "unknown"),
+    ("0x4275696c6465722b207777772e627463732e636f6d2f6275696c646572", "BTCS"),
     ("0xd883010f0b846765746888676f312e32342e32856c696e7578", "unknown"),
     ("0xd883010e08846765746888676f312e32322e36856c696e7578", "unknown"),
     ("0xd883010e0c846765746888676f312e32332e33856c696e7578", "unknown"),
