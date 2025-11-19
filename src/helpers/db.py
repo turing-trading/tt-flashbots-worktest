@@ -5,6 +5,8 @@ from typing import Any
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from sqlalchemy import inspect
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
@@ -67,10 +69,10 @@ async def upsert_model[DBModelType](
     primary_key_value: Any,
     extra_fields: dict[str, Any] | None = None,
 ) -> None:
-    """Generic upsert helper to insert or update a database record.
+    """Generic upsert helper using PostgreSQL INSERT ... ON CONFLICT DO UPDATE.
 
-    This function eliminates the need for manual attribute assignment and
-    type: ignore comments when working with SQLAlchemy models.
+    This function uses atomic database-level upsert to avoid race conditions
+    in concurrent environments.
 
     Args:
         db_model_class: The SQLAlchemy model class (e.g., BlockDB, AnalysisPBSDB)
@@ -95,22 +97,32 @@ async def upsert_model[DBModelType](
         )
     """
     async with AsyncSessionLocal() as session:
-        # Check if record already exists
-        existing = await session.get(db_model_class, primary_key_value)
+        # Prepare data for insert
+        data = pydantic_model.model_dump()
+        if extra_fields:
+            data.update(extra_fields)
 
-        if existing:
-            # Update existing record with all fields from Pydantic model
-            for key, value in pydantic_model.model_dump().items():
-                setattr(existing, key, value)
-            # Also update extra fields if provided
-            if extra_fields:
-                for key, value in extra_fields.items():
-                    setattr(existing, key, value)
-        else:
-            # Insert new record using all fields from Pydantic model plus extra fields
-            data = pydantic_model.model_dump()
-            if extra_fields:
-                data.update(extra_fields)
-            session.add(db_model_class(**data))
+        # Get primary key column names using SQLAlchemy inspection
+        mapper = inspect(db_model_class)
+        if not mapper:
+            raise ValueError(f"Cannot inspect {db_model_class}")
+        pk_columns = [col.name for col in mapper.primary_key]
 
+        # Create INSERT statement with ON CONFLICT DO UPDATE
+        stmt = pg_insert(db_model_class).values(data)
+
+        # Build the update dict (all columns except primary keys)
+        update_dict = {
+            col: stmt.excluded[col]
+            for col in data.keys()
+            if col not in pk_columns
+        }
+
+        # Apply ON CONFLICT DO UPDATE
+        stmt = stmt.on_conflict_do_update(
+            index_elements=pk_columns,
+            set_=update_dict,
+        )
+
+        await session.execute(stmt)
         await session.commit()

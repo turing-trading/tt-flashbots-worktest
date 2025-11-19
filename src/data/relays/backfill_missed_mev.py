@@ -19,9 +19,9 @@ from rich.progress import (
     SpinnerColumn,
     TextColumn,
     TimeElapsedColumn,
+    TimeRemainingColumn,
 )
 from rich.table import Table
-from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -78,45 +78,13 @@ class BackfillMissedMEV:
         )
         return data
 
-    async def _check_existing_payloads(
-        self, session: AsyncSession, block_numbers: list[int]
-    ) -> dict[int, list[str]]:
-        """Check which blocks already have relay payloads in database.
-
-        Args:
-            session: Database session
-            block_numbers: List of block numbers to check
-
-        Returns:
-            Dictionary mapping block_number to list of relays that have it
-        """
-        # Query relays_payloads by block_number directly
-        block_to_relays: dict[int, list[str]] = {}
-
-        # Process in batches
-        batch_size = 1000
-        for i in range(0, len(block_numbers), batch_size):
-            batch = block_numbers[i : i + batch_size]
-
-            stmt = select(RelaysPayloadsDB.block_number, RelaysPayloadsDB.relay).where(
-                RelaysPayloadsDB.block_number.in_(batch)
-            )
-
-            result = await session.execute(stmt)
-            rows = result.fetchall()
-
-            for block_number, relay in rows:
-                if block_number not in block_to_relays:
-                    block_to_relays[block_number] = []
-                block_to_relays[block_number].append(relay)
-
-        self.logger.info(f"Found {len(block_to_relays)} blocks already in database")
-        return block_to_relays
-
     async def _fetch_block_from_relay(
-        self, client: httpx.AsyncClient, relay: str, block_number: int
+        self,
+        client: httpx.AsyncClient,
+        relay: str,
+        block_number: int,
     ) -> list[RelaysPayloads]:
-        """Fetch data for a specific block from a relay.
+        """Fetch data for a specific block from a relay with retry logic.
 
         Args:
             client: HTTP client
@@ -126,35 +94,75 @@ class BackfillMissedMEV:
         Returns:
             List of relay payloads (usually 0 or 1)
         """
-        url = f"https://{relay}{self.endpoint}"
+        from asyncio import sleep
 
-        # Query by block_number - fetch around this block and filter
+        url = f"https://{relay}{self.endpoint}"
         params = {"block_number": str(block_number)}
 
-        try:
-            response = await client.get(url, params=params, timeout=30.0)
-            response.raise_for_status()
+        max_retries = 5
+        base_delay = 1  # Start with 1 second delay
 
-            data = TypeAdapter(list[RelaysPayloads]).validate_json(response.text)
+        for attempt in range(max_retries):
+            try:
+                response = await client.get(url, params=params, timeout=30.0)
+                response.raise_for_status()
 
-            # Filter to only the specific block we want
-            matching = [item for item in data if item.block_number == block_number]
-            return matching
+                data = TypeAdapter(list[RelaysPayloads]).validate_json(response.text)
 
-        except httpx.TimeoutException:
-            self.logger.warning(f"Timeout fetching block {block_number} from {relay}")
-            return []
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code in [404, 400]:
-                # Relay doesn't have this data or doesn't support block_number param
+                # Filter to only the specific block we want
+                matching = [item for item in data if item.block_number == block_number]
+                return matching
+
+            except httpx.TimeoutException:
+                # Retry on timeout with exponential backoff
+                retry_delay = base_delay * (2**attempt)
+                self.logger.warning(
+                    f"Timeout from {relay} for block {block_number}, "
+                    f"retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries})"
+                )
+                if attempt < max_retries - 1:
+                    await sleep(retry_delay)
+                    continue
+                else:
+                    self.logger.error(
+                        f"Failed to fetch block {block_number} from {relay} after {max_retries} attempts"
+                    )
+                    return []
+
+            except httpx.HTTPStatusError as e:
+                # Retry on 408 (Request Timeout) and 409 (Conflict)
+                if e.response.status_code in [408, 409]:
+                    retry_delay = base_delay * (2**attempt)
+                    self.logger.warning(
+                        f"HTTP {e.response.status_code} from {relay} for block {block_number}, "
+                        f"retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries})"
+                    )
+                    if attempt < max_retries - 1:
+                        await sleep(retry_delay)
+                        continue
+                    else:
+                        self.logger.error(
+                            f"Failed to fetch block {block_number} from {relay} "
+                            f"after {max_retries} attempts: {e}"
+                        )
+                        return []
+                elif e.response.status_code in [404, 400]:
+                    # Relay doesn't have this data or doesn't support block_number param
+                    return []
+                else:
+                    self.logger.warning(
+                        f"HTTP error fetching block {block_number} from {relay}: {e}"
+                    )
+                    return []
+
+            except Exception as e:
+                self.logger.error(
+                    f"Error fetching block {block_number} from {relay}: {e}"
+                )
                 return []
-            self.logger.warning(
-                f"HTTP error fetching block {block_number} from {relay}: {e}"
-            )
-            return []
-        except Exception as e:
-            self.logger.error(f"Error fetching block {block_number} from {relay}: {e}")
-            return []
+
+        # Should not reach here, but just in case
+        return []
 
     async def _store_payloads(
         self,
@@ -176,7 +184,20 @@ class BackfillMissedMEV:
             return 0
 
         canonical_name = self._get_canonical_relay_name(relay)
-        values = [{**p.model_dump(), "relay": canonical_name} for p in payloads]
+
+        # Deduplicate by slot (primary key is slot + relay)
+        # Keep the first occurrence of each slot
+        seen_slots = set()
+        unique_payloads = []
+        for p in payloads:
+            if p.slot not in seen_slots:
+                seen_slots.add(p.slot)
+                unique_payloads.append(p)
+
+        if not unique_payloads:
+            return 0
+
+        values = [{**p.model_dump(), "relay": canonical_name} for p in unique_payloads]
 
         stmt = pg_insert(RelaysPayloadsDB).values(values)
         excluded = stmt.excluded
@@ -235,12 +256,13 @@ class BackfillMissedMEV:
                 )
                 continue
 
-            if result:
+            # result is now guaranteed to be list[RelaysPayloads]
+            if not isinstance(result, BaseException) and result:
                 stored = await self._store_payloads(session, result, relay)
                 if stored > 0:
                     found_relays.append(relay)
                     total_stored += stored
-                    self.logger.info(
+                    self.logger.debug(
                         f"Found and stored block {block_number} from {relay}"
                     )
 
@@ -274,65 +296,46 @@ class BackfillMissedMEV:
             self.console.print("[yellow]No missed blocks to process[/yellow]")
             return {"total_blocks": 0, "found_blocks": 0, "results": []}
 
-        self.console.print(f"[cyan]Processing {len(block_numbers):,} blocks[/cyan]\n")
+        # Sort blocks by descending order (most recent first)
+        block_numbers = sorted(block_numbers, reverse=True)
+
+        self.console.print(
+            f"[cyan]Processing {len(block_numbers):,} blocks "
+            f"(most recent: {block_numbers[0]:,}, oldest: {block_numbers[-1]:,})[/cyan]\n"
+        )
 
         # Get active relays
         relays = RELAYS
         self.console.print(
-            f"[cyan]Trying {len(relays)} relays: {', '.join(relays)}[/cyan]\n"
+            f"[cyan]Querying {len(relays)} relays in parallel: {', '.join(relays)}[/cyan]\n"
+        )
+
+        # Process blocks
+        results = []
+        found_count = 0
+
+        progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TextColumn("•"),
+            TimeElapsedColumn(),
+            TextColumn("•"),
+            TimeRemainingColumn(),
+            console=self.console,
         )
 
         async with AsyncSessionLocal() as session:
-            # Check which blocks already exist in database
-            self.console.print(
-                "[yellow]Checking existing payloads in database...[/yellow]"
-            )
-            existing_payloads = await self._check_existing_payloads(
-                session, block_numbers
-            )
-
-            # Filter to blocks we still need to fetch
-            blocks_to_fetch = [
-                bn for bn in block_numbers if bn not in existing_payloads
-            ]
-
-            self.console.print(
-                f"[green]Already have {len(existing_payloads):,} blocks in database[/green]"
-            )
-            self.console.print(
-                f"[yellow]Need to fetch {len(blocks_to_fetch):,} blocks from relays[/yellow]\n"
-            )
-
-            if not blocks_to_fetch:
-                self.console.print("[green]All blocks already in database![/green]")
-                return {
-                    "total_blocks": len(block_numbers),
-                    "found_blocks": len(existing_payloads),
-                    "results": [],
-                }
-
-            # Process blocks
-            results = []
-            found_count = 0
-
-            progress = Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                MofNCompleteColumn(),
-                TextColumn("•"),
-                TimeElapsedColumn(),
-                console=self.console,
-            )
-
             async with httpx.AsyncClient(timeout=30.0) as client:
                 with progress:
                     task_id = progress.add_task(
-                        "Fetching blocks from relays",
-                        total=len(blocks_to_fetch),
+                        "Fetching blocks from all relays",
+                        total=len(block_numbers),
                     )
 
-                    for block_number in blocks_to_fetch:
+                    # Iterate over each block number
+                    for block_number in block_numbers:
                         result = await self._try_fetch_block(
                             client, session, block_number, relays
                         )
@@ -344,11 +347,11 @@ class BackfillMissedMEV:
                         progress.update(task_id, advance=1)
 
         # Display results
-        self._display_results(results, found_count, len(blocks_to_fetch))
+        self._display_results(results, found_count, len(block_numbers))
 
         return {
-            "total_blocks": len(blocks_to_fetch),
-            "found_blocks": found_count + len(existing_payloads),
+            "total_blocks": len(block_numbers),
+            "found_blocks": found_count,
             "results": results,
         }
 
@@ -362,7 +365,7 @@ class BackfillMissedMEV:
             found_count: Number of blocks found
             total_count: Total blocks processed
         """
-        self.console.print(f"\n[bold green]Backfill Complete[/bold green]")
+        self.console.print("\n[bold green]Backfill Complete[/bold green]")
         self.console.print(f"Total blocks processed: {total_count:,}")
         self.console.print(f"Blocks found in relays: {found_count:,}")
         self.console.print(f"Success rate: {(found_count / total_count * 100):.1f}%\n")

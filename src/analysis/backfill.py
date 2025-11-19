@@ -18,18 +18,18 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.analysis.constants import clean_builder_name
+from src.analysis.builder_name import parse_builder_name_from_extra_data
 from src.analysis.db import AnalysisPBSV2DB
 from src.data.blocks.db import BlockDB
-from src.data.builders.db import BuilderIdentifiersDB
 from src.data.proposers.db import ProposerBalancesDB
 from src.data.relays.db import RelaysPayloadsDB
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
 from src.helpers.parsers import wei_to_eth
 
-START_DATE = datetime(2024, 12, 3, 6, 3, 54)
-END_DATE = datetime(2025, 11, 8, 18, 54, 40)
+# {"from":"2025-10-10 20:28:28","to":"2025-11-07 13:30:57"}
+START_DATE = datetime(2025, 10, 10, 20, 28, 28)
+END_DATE = datetime(2025, 11, 7, 13, 30, 57)
 
 
 class BackfillAnalysisPBSV2:
@@ -129,16 +129,15 @@ class BackfillAnalysisPBSV2:
         """
         self.logger.debug(f"Aggregating data for {len(block_numbers)} blocks")
 
-        # Build the aggregation query with builder_name from builders_identifiers
-        # We need to get the builder_pubkey from relays_payloads first, then join with builders_identifiers
+        # Build the aggregation query with extra_data for parsing builder name
         stmt = (
             select(
                 BlockDB.number.label("block_number"),
                 BlockDB.timestamp.label("block_timestamp"),
+                BlockDB.extra_data.label("extra_data"),
                 ProposerBalancesDB.balance_increase.label("builder_balance_increase"),
                 func.array_agg(RelaysPayloadsDB.relay).label("relays"),
                 func.max(RelaysPayloadsDB.value).label("proposer_subsidy"),
-                func.max(BuilderIdentifiersDB.builder_name).label("builder_name"),
             )
             .select_from(BlockDB)
             .outerjoin(
@@ -148,14 +147,11 @@ class BackfillAnalysisPBSV2:
             .outerjoin(
                 RelaysPayloadsDB, BlockDB.number == RelaysPayloadsDB.block_number
             )
-            .outerjoin(
-                BuilderIdentifiersDB,
-                RelaysPayloadsDB.builder_pubkey == BuilderIdentifiersDB.builder_pubkey,
-            )
             .where(BlockDB.number.in_(block_numbers))
             .group_by(
                 BlockDB.number,
                 BlockDB.timestamp,
+                BlockDB.extra_data,
                 ProposerBalancesDB.balance_increase,
             )
         )
@@ -180,7 +176,9 @@ class BackfillAnalysisPBSV2:
             builder_balance_increase = wei_to_eth(row.builder_balance_increase) or 0.0
             proposer_subsidy = wei_to_eth(row.proposer_subsidy) or 0.0
             total_value = builder_balance_increase + proposer_subsidy
-            builder_name = clean_builder_name(row.builder_name) or "unknown"
+
+            # Parse builder name directly from extra_data
+            builder_name = parse_builder_name_from_extra_data(row.extra_data)
 
             aggregated_data.append(
                 {

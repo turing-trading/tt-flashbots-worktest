@@ -1,5 +1,12 @@
-"""Constants for analysis module including builder name cleanup."""
+"""Builder name parsing and normalization utilities.
 
+This module provides functions for:
+- Parsing builder names from block extra_data
+- Cleaning and normalizing builder names
+- Mapping builder name variations to canonical names
+"""
+
+import binascii
 import re
 
 # Builder name remapping for consistent naming
@@ -79,6 +86,10 @@ def _advanced_clean_builder_name(name: str) -> str:
     # Strip whitespace
     cleaned = cleaned.strip()
 
+    # Handle comma-separated phrases - take first part before comma
+    if "," in cleaned:
+        cleaned = cleaned.split(",")[0].strip()
+
     # First, try to extract content from parentheses (e.g., "Quasar (quasar.win)" -> "quasar.win")
     paren_match = re.search(r"\(([^)]+)\)", cleaned)
     if paren_match:
@@ -97,6 +108,9 @@ def _advanced_clean_builder_name(name: str) -> str:
         if domain_match:
             cleaned = domain_match.group(1)
 
+    # Remove version patterns like "v1.34", "v1.35.0", etc.
+    cleaned = re.sub(r"\s+v?\d+\.\d+(?:\.\d+)*\.?", "", cleaned, flags=re.IGNORECASE)
+
     # Remove trailing and leading special characters
     cleaned = re.sub(r"^[^a-zA-Z0-9]+|[^a-zA-Z0-9.]+$", "", cleaned)
 
@@ -111,3 +125,46 @@ def _advanced_clean_builder_name(name: str) -> str:
         return "unknown"
 
     return cleaned
+
+
+def parse_builder_name_from_extra_data(extra_data: str | None) -> str:
+    """Parse builder name from block extra_data hex string.
+
+    Decodes hex-encoded extra_data, extracts UTF-8 text, and applies
+    advanced cleaning to normalize builder names.
+
+    Args:
+        extra_data: Hex string of extra_data from block (with or without '0x' prefix)
+
+    Returns:
+        Parsed and cleaned builder name, or 'unknown' if unparseable
+
+    Example:
+        >>> parse_builder_name_from_extra_data("0x6265617665726275696c642e6f7267")
+        'BuilderNet (Beaver)'
+        >>> parse_builder_name_from_extra_data(None)
+        'unknown'
+    """
+    if not extra_data:
+        return "unknown"
+
+    # Remove '0x' prefix if present
+    hex_str = extra_data[2:] if extra_data.startswith("0x") else extra_data
+
+    try:
+        # Convert hex to bytes
+        bytes_data = binascii.unhexlify(hex_str)
+        # Decode as UTF-8, strip null bytes
+        builder_name = bytes_data.decode("utf-8", errors="ignore").strip("\x00")
+
+        # Replace any remaining null bytes (PostgreSQL doesn't support them)
+        builder_name = builder_name.replace("\x00", "")
+
+        # Clean up the builder name using advanced cleaning
+        builder_name = clean_builder_name(builder_name, apply_advanced_cleaning=True)
+
+        # Return cleaned string or 'unknown' if empty
+        return builder_name if builder_name else "unknown"
+    except Exception:
+        # If parsing fails, return 'unknown'
+        return "unknown"

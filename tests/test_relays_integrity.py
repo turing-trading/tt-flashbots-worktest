@@ -7,6 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.data.relays.constants import RELAYS
 from src.data.relays.db import RelaysPayloadsDB
 
+# Mark all tests in this module as integration tests (require database)
+pytestmark = pytest.mark.integration
+
 
 @pytest.mark.asyncio
 async def test_composite_key_uniqueness(async_session: AsyncSession):

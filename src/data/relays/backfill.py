@@ -291,30 +291,34 @@ class BackfillProposerPayloadDelivered:
 
         return from_slot, to_slot
 
-    async def backfill(self, relay: str, latest_slot: int) -> None:
+    async def backfill(self, relay: str, latest_slot: int, target_end_slot: int = 0, ignore_checkpoints: bool = False) -> None:
         """Backfill proposer payload delivered data.
 
         Two-phase backfill strategy:
         1. Phase 1: Always fetch latest_slot -> to_slot (new data since last run)
-        2. Phase 2: If from_slot != 0, fetch from_slot -> 0 (historical data)
+        2. Phase 2: If from_slot != target_end_slot, fetch from_slot -> target_end_slot (historical data)
+
+        Args:
+            relay: Relay to backfill
+            latest_slot: Latest slot to backfill to
+            target_end_slot: Target end slot (default: 0)
+            ignore_checkpoints: If True, ignore existing checkpoints and force backfill (default: False)
         """
         if self.progress is None:
             raise ValueError("Progress is not initialized")
         async with AsyncSessionLocal() as session:
-            checkpoint = await self._get_checkpoint(session, relay)
+            checkpoint = await self._get_checkpoint(session, relay) if not ignore_checkpoints else None
 
-            if checkpoint is None:
-                # No checkpoint: start from latest_slot and work backwards
-                # from_slot = latest_slot means we haven't started historical backfill yet
-                # from_slot = 0 means we've completed backfill to slot 0
+            if checkpoint is None or ignore_checkpoints:
+                # No checkpoint or ignoring checkpoints: force backfill for the range
                 from_slot = latest_slot
-                to_slot = 0
-                phase1_needed = True
-                phase2_needed = True  # Need to backfill from latest_slot to 0
+                to_slot = target_end_slot
+                phase1_needed = False  # Skip phase 1 when doing custom range
+                phase2_needed = True  # Always backfill from latest_slot to target_end_slot
             else:
                 from_slot, to_slot = checkpoint
                 phase1_needed = to_slot < latest_slot
-                phase2_needed = from_slot > 0
+                phase2_needed = from_slot > target_end_slot
 
             # Create progress task for this relay
             estimated_total_slots = latest_slot - 5000000
@@ -347,14 +351,14 @@ class BackfillProposerPayloadDelivered:
                             to_slot,
                         )
 
-                    # Phase 2: Continue historical backfill (from_slot -> 0)
+                    # Phase 2: Continue historical backfill (from_slot -> target_end_slot)
                     if phase2_needed:
                         from_slot, to_slot = await self._backfill_range(
                             client,
                             session,
                             relay,
                             from_slot,
-                            0,
+                            target_end_slot,
                             relay_limit,
                             task_id,
                             "historical",
@@ -377,17 +381,28 @@ class BackfillProposerPayloadDelivered:
                 self.logger.error(f"Backfill failed for {relay}: {e}")
                 raise  # Re-raise to be caught by gather(return_exceptions=True)
 
-    async def run(self) -> None:
-        """Run the backfill."""
+    async def run(self, start_slot: int | None = None, end_slot: int | None = None) -> None:
+        """Run the backfill.
+
+        Args:
+            start_slot: Optional start slot (defaults to latest slot)
+            end_slot: Optional end slot (defaults to 0)
+        """
         await self.create_tables()
 
-        latest_slot = await self._get_latest_slot()
-        latest_slot = int(latest_slot - (60 * 60 / 12))  # Security buffer of 1 hour
+        if start_slot is None:
+            latest_slot = await self._get_latest_slot()
+            latest_slot = int(latest_slot - (60 * 60 / 12))  # Security buffer of 1 hour
+        else:
+            latest_slot = start_slot
 
         self.console.print(
             f"[bold blue]Running backfill for {len(RELAYS)} relays[/bold blue]"
         )
-        self.console.print(f"[cyan]Latest slot: {latest_slot:,}[/cyan]\n")
+        self.console.print(f"[cyan]Latest slot: {latest_slot:,}[/cyan]")
+        if end_slot is not None:
+            self.console.print(f"[cyan]End slot: {end_slot:,}[/cyan]")
+        self.console.print()
 
         # Create progress display
         self.progress = Progress(
@@ -405,7 +420,10 @@ class BackfillProposerPayloadDelivered:
 
         with self.progress:
             # Create tasks for each relay
-            tasks = [create_task(self.backfill(relay, latest_slot)) for relay in RELAYS]
+            target_end = end_slot if end_slot is not None else 0
+            # Ignore checkpoints when custom slots are provided
+            ignore_checkpoints = start_slot is not None
+            tasks = [create_task(self.backfill(relay, latest_slot, target_end, ignore_checkpoints)) for relay in RELAYS]
 
             try:
                 # Use return_exceptions=True so one failing relay doesn't cancel others
@@ -422,5 +440,10 @@ class BackfillProposerPayloadDelivered:
 
 
 if __name__ == "__main__":
+    import sys
+
+    start_slot = int(sys.argv[1]) if len(sys.argv) > 1 else None
+    end_slot = int(sys.argv[2]) if len(sys.argv) > 2 else None
+
     backfill = BackfillProposerPayloadDelivered()
-    run(backfill.run())
+    run(backfill.run(start_slot=start_slot, end_slot=end_slot))

@@ -6,6 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.blocks.db import BlockDB
 
+# Mark all tests in this module as integration tests (require database)
+pytestmark = pytest.mark.integration
+
 
 @pytest.mark.asyncio
 async def test_block_continuity(async_session: AsyncSession, max_violations: int):

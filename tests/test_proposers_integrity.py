@@ -6,6 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.proposers.db import ProposerBalancesDB
 
+# Mark all tests in this module as integration tests (require database)
+pytestmark = pytest.mark.integration
+
 
 @pytest.mark.asyncio
 async def test_balance_foreign_key_integrity(

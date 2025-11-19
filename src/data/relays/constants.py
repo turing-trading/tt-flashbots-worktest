@@ -3,13 +3,13 @@
 import os
 
 RELAYS = [
-    "relay-analytics.ultrasound.money",  # Redirect from relay.ultrasound.money
-    "bloxroute.max-profit.blxrbdn.com",
-    "bloxroute.regulated.blxrbdn.com",
-    "titanrelay.xyz",
-    "agnostic-relay.net",
-    "aestus.live",
-    "boost-relay.flashbots.net",
+    # "relay-analytics.ultrasound.money",  # Redirect from relay.ultrasound.money
+    # "bloxroute.max-profit.blxrbdn.com",
+    # "bloxroute.regulated.blxrbdn.com",
+    # "titanrelay.xyz",
+    # "agnostic-relay.net",
+    # "aestus.live",
+    # "boost-relay.flashbots.net",
     "relay.ethgas.com",
     # "relay.btcs.com",
     # "relay.wenmerge.com",

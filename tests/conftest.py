@@ -2,9 +2,18 @@
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.helpers.db import AsyncSessionLocal
+
+
+# Apply 10-second timeout to all integration tests
+def pytest_collection_modifyitems(config, items):
+    """Add timeout marker to integration tests."""
+    for item in items:
+        if "integration" in item.keywords:
+            item.add_marker(pytest.mark.timeout(10))
 
 
 @pytest_asyncio.fixture
@@ -17,8 +26,13 @@ async def async_session() -> AsyncSession:
     Yields:
         AsyncSession: Database session for testing
     """
-    async with AsyncSessionLocal() as session:
-        yield session
+    try:
+        async with AsyncSessionLocal() as session:
+            # Quick connectivity check
+            await session.execute(text("SELECT 1"))
+            yield session
+    except Exception as e:
+        pytest.skip(f"Database not available: {e}")
 
 
 @pytest.fixture
@@ -37,5 +51,15 @@ def max_violations() -> int:
 
     Returns:
         int: Limit for error reporting to avoid overwhelming output
+    """
+    return 10
+
+
+@pytest.fixture
+def sample_size() -> int:
+    """Sample size for quick integration tests.
+
+    Returns:
+        int: Number of records to sample for fast testing
     """
     return 100

@@ -18,7 +18,6 @@ fi
 
 # Build the image
 docker build \
-    --no-cache \
     -f deploy/Dockerfile \
     -t "${FULL_IMAGE}" \
     .

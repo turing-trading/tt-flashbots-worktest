@@ -23,19 +23,6 @@ from src.data.relays.db import RelaysPayloadsDB
 from src.helpers.db import AsyncSessionLocal
 from src.helpers.logging import get_logger
 
-# Known MEV-related extra_data patterns (hex encoded)
-MEV_EXTRA_DATA_PATTERNS = [
-    "flashbots",
-    "builder0x69",
-    "beaverbuild",
-    "rsync",
-    "titan",
-    "penguin",
-    "bloxroute",
-    "manifold",
-    "eth-builder",
-]
-
 
 class MissedMEVDetector:
     """Detect potentially missed MEV blocks."""
@@ -53,7 +40,7 @@ class MissedMEVDetector:
             end_date: End date for analysis (default: now)
             output_file: Path to save JSON output (default: missed_mev_blocks.json)
         """
-        self.start_date = start_date or datetime(2023, 1, 1)
+        self.start_date = start_date or datetime(2025, 1, 1)
         self.end_date = end_date or datetime.now()
         self.output_file = output_file
         self.logger = get_logger("missed_mev_detector", log_level="INFO")
@@ -132,6 +119,7 @@ class MissedMEVDetector:
                         BlockDB.timestamp >= self.start_date,
                         BlockDB.timestamp <= self.end_date,
                         RelaysPayloadsDB.block_number.is_(None),  # No relay payload
+                        BlockDB.miner.isnot(None),
                     )
                 )
             )
@@ -161,41 +149,15 @@ class MissedMEVDetector:
 
             # Filter for MEV characteristics in this batch
             for block in vanilla_blocks:
-                is_mev = False
-                mev_indicators = []
-
                 # Check miner address against known MEV builders
                 if block.miner and block.miner.lower() in self.known_mev_builders:
-                    is_mev = True
-                    mev_indicators.append(f"Known builder: {block.miner}")
-
-                # Check extra_data for MEV patterns
-                if block.extra_data:
-                    try:
-                        # Decode hex extra_data to string
-                        extra_data_hex = block.extra_data
-                        if extra_data_hex.startswith("0x"):
-                            extra_data_hex = extra_data_hex[2:]
-                        extra_data_str = bytes.fromhex(extra_data_hex).decode(
-                            "utf-8", errors="ignore"
-                        ).lower()
-
-                        for pattern in MEV_EXTRA_DATA_PATTERNS:
-                            if pattern.lower() in extra_data_str:
-                                is_mev = True
-                                mev_indicators.append(f"Extra data contains: {pattern}")
-                                break
-                    except Exception:
-                        pass
-
-                if is_mev:
                     missed_mev_blocks.append(
                         {
                             "block_number": block.block_number,
                             "timestamp": block.timestamp,
                             "miner": block.miner,
                             "extra_data": block.extra_data,
-                            "indicators": mev_indicators,
+                            "indicators": [f"Known MEV builder: {block.miner}"],
                         }
                     )
 
@@ -252,7 +214,9 @@ class MissedMEVDetector:
             "relay_blocks": relay_blocks,
             "vanilla_blocks": vanilla_blocks,
             "relay_pct": (relay_blocks / total_blocks * 100) if total_blocks > 0 else 0,
-            "vanilla_pct": (vanilla_blocks / total_blocks * 100) if total_blocks > 0 else 0,
+            "vanilla_pct": (vanilla_blocks / total_blocks * 100)
+            if total_blocks > 0
+            else 0,
         }
 
     async def _group_by_miner(self, missed_blocks: list[dict]) -> dict[str, list]:
@@ -322,7 +286,9 @@ class MissedMEVDetector:
             table.add_row(
                 str(block["block_number"]),
                 block["timestamp"].strftime("%Y-%m-%d %H:%M:%S"),
-                block["miner"][:20] + "..." if len(block["miner"]) > 20 else block["miner"],
+                block["miner"][:20] + "..."
+                if len(block["miner"]) > 20
+                else block["miner"],
                 ", ".join(block["indicators"][:2]),  # Show first 2 indicators
             )
 
@@ -345,9 +311,7 @@ class MissedMEVDetector:
         table.add_column("Slot Range", style="magenta")
 
         # Sort by count descending
-        sorted_miners = sorted(
-            by_miner.items(), key=lambda x: len(x[1]), reverse=True
-        )
+        sorted_miners = sorted(by_miner.items(), key=lambda x: len(x[1]), reverse=True)
 
         for miner, blocks in sorted_miners:
             count = len(blocks)
@@ -404,7 +368,9 @@ class MissedMEVDetector:
             Dictionary with analysis results
         """
         self.console.print("[bold blue]Missed MEV Block Detector[/bold blue]\n")
-        self.console.print(f"[cyan]Date range: {self.start_date} to {self.end_date}[/cyan]\n")
+        self.console.print(
+            f"[cyan]Date range: {self.start_date} to {self.end_date}[/cyan]\n"
+        )
 
         async with AsyncSessionLocal() as session:
             # Build list of known MEV builders from database
@@ -440,10 +406,18 @@ class MissedMEVDetector:
 
                 # Show recommendations
                 self.console.print("\n[bold yellow]Recommendations:[/bold yellow]")
-                self.console.print("1. Review the slot ranges above for potential relay data gaps")
-                self.console.print("2. Run retry_gaps.py to backfill missing relay data")
-                self.console.print("3. Check if these builders are properly configured in relays")
-                self.console.print(f"4. Review {self.output_file} for detailed block list")
+                self.console.print(
+                    "1. Review the slot ranges above for potential relay data gaps"
+                )
+                self.console.print(
+                    "2. Run retry_gaps.py to backfill missing relay data"
+                )
+                self.console.print(
+                    "3. Check if these builders are properly configured in relays"
+                )
+                self.console.print(
+                    f"4. Review {self.output_file} for detailed block list"
+                )
             else:
                 self.console.print("\n[green]✓ No missed MEV blocks detected[/green]")
                 # Still save empty result to JSON

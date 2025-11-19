@@ -4,12 +4,15 @@ import pytest
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.analysis.db import AnalysisPBSDB
+from src.analysis.db import AnalysisPBSV2DB as AnalysisPBSDB
+
+# Mark all tests in this module as integration tests (require database)
+pytestmark = pytest.mark.integration
 
 
 @pytest.mark.asyncio
 async def test_total_value_calculation(
-    async_session: AsyncSession, max_violations: int, tolerance: float
+    async_session: AsyncSession, max_violations: int, tolerance: float, sample_size: int
 ):
     """Test that total_value = builder_balance_increase + proposer_subsidy.
 
@@ -22,7 +25,7 @@ async def test_total_value_calculation(
             AnalysisPBSDB.builder_balance_increase,
             AnalysisPBSDB.proposer_subsidy,
             AnalysisPBSDB.total_value,
-        ).limit(10000)  # Sample for performance
+        ).limit(sample_size)  # Sample for performance
     )
 
     result = await async_session.execute(stmt)
@@ -43,7 +46,7 @@ async def test_total_value_calculation(
 
 @pytest.mark.asyncio
 async def test_vanilla_block_classification(
-    async_session: AsyncSession, max_violations: int
+    async_session: AsyncSession, max_violations: int, sample_size: int
 ):
     """Test that vanilla block flags are consistent with relay data.
 
@@ -56,7 +59,7 @@ async def test_vanilla_block_classification(
             AnalysisPBSDB.is_block_vanilla,
             AnalysisPBSDB.n_relays,
             AnalysisPBSDB.relays,
-        ).limit(10000)  # Sample for performance
+        ).limit(sample_size)  # Sample for performance
     )
 
     result = await async_session.execute(stmt)
