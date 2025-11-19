@@ -461,6 +461,10 @@ class LiveProcessor:
                 f"Block #{block_number}: No relay data found after {elapsed_minutes}m of retries"
             )
 
+        found_relays = [r["relay"] for r in relay_data] if relay_data else []
+        if found_relays:
+            self.relays_processed += len(found_relays)
+            logger.info(f"Stored relay payloads for block #{block_number}")
         return relay_data
 
     async def _store_relay_payloads(self, block_number: int) -> list[dict[str, Any]]:

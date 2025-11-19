@@ -291,7 +291,13 @@ class BackfillProposerPayloadDelivered:
 
         return from_slot, to_slot
 
-    async def backfill(self, relay: str, latest_slot: int, target_end_slot: int = 0, ignore_checkpoints: bool = False) -> None:
+    async def backfill(
+        self,
+        relay: str,
+        latest_slot: int,
+        target_end_slot: int = 0,
+        ignore_checkpoints: bool = False,
+    ) -> None:
         """Backfill proposer payload delivered data.
 
         Two-phase backfill strategy:
@@ -307,14 +313,20 @@ class BackfillProposerPayloadDelivered:
         if self.progress is None:
             raise ValueError("Progress is not initialized")
         async with AsyncSessionLocal() as session:
-            checkpoint = await self._get_checkpoint(session, relay) if not ignore_checkpoints else None
+            checkpoint = (
+                await self._get_checkpoint(session, relay)
+                if not ignore_checkpoints
+                else None
+            )
 
             if checkpoint is None or ignore_checkpoints:
                 # No checkpoint or ignoring checkpoints: force backfill for the range
                 from_slot = latest_slot
                 to_slot = target_end_slot
                 phase1_needed = False  # Skip phase 1 when doing custom range
-                phase2_needed = True  # Always backfill from latest_slot to target_end_slot
+                phase2_needed = (
+                    True  # Always backfill from latest_slot to target_end_slot
+                )
             else:
                 from_slot, to_slot = checkpoint
                 phase1_needed = to_slot < latest_slot
@@ -381,7 +393,9 @@ class BackfillProposerPayloadDelivered:
                 self.logger.error(f"Backfill failed for {relay}: {e}")
                 raise  # Re-raise to be caught by gather(return_exceptions=True)
 
-    async def run(self, start_slot: int | None = None, end_slot: int | None = None) -> None:
+    async def run(
+        self, start_slot: int | None = None, end_slot: int | None = None
+    ) -> None:
         """Run the backfill.
 
         Args:
@@ -392,7 +406,9 @@ class BackfillProposerPayloadDelivered:
 
         if start_slot is None:
             latest_slot = await self._get_latest_slot()
-            latest_slot = int(latest_slot - (60 * 60 / 12))  # Security buffer of 1 hour
+            latest_slot = int(
+                latest_slot - (10 * 60 / 12)
+            )  # Security buffer of 10 minutes
         else:
             latest_slot = start_slot
 
@@ -423,7 +439,12 @@ class BackfillProposerPayloadDelivered:
             target_end = end_slot if end_slot is not None else 0
             # Ignore checkpoints when custom slots are provided
             ignore_checkpoints = start_slot is not None
-            tasks = [create_task(self.backfill(relay, latest_slot, target_end, ignore_checkpoints)) for relay in RELAYS]
+            tasks = [
+                create_task(
+                    self.backfill(relay, latest_slot, target_end, ignore_checkpoints)
+                )
+                for relay in RELAYS
+            ]
 
             try:
                 # Use return_exceptions=True so one failing relay doesn't cancel others
