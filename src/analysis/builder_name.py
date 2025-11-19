@@ -81,6 +81,10 @@ def clean_builder_name(
     if "geth" in builder_name.lower():
         return "unknown"
 
+    # Check for BTCS (case-insensitive)
+    if "btcs" in builder_name.lower():
+        return "BTCS"
+
     # Apply advanced cleaning if requested (used by backfill processes)
     if apply_advanced_cleaning:
         builder_name = _advanced_clean_builder_name(builder_name)

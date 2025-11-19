@@ -1,8 +1,7 @@
 """Database models for Ultrasound adjustments."""
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Integer, Numeric, String
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Numeric, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
 from src.helpers.db import Base
 

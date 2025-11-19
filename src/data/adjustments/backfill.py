@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -19,8 +19,8 @@ from rich.progress import (
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.data.adjustments.db import UltrasoundAdjustmentDB
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
-from src.data.adjustments.db import UltrasoundAdjustmentDB, adjustment_exists
 
 # Configure logging
 logging.basicConfig(
@@ -69,7 +69,7 @@ def create_adjustment_record(
     slot: int, adjustment_data: dict[str, Any] | None
 ) -> UltrasoundAdjustmentDB:
     """Create adjustment database record from API response."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if adjustment_data is None:
         # No adjustment found - create record indicating absence
@@ -221,10 +221,12 @@ async def backfill_adjustments(
                     batch_results = await process_batch(batch, client)
 
                     # Create and insert records (skip API errors)
-                    for slot_data, (result_slot, success, adjustment_data) in zip(
-                        batch, batch_results
+                    for slot_data, (_, success, adjustment_data) in zip(
+                        batch,
+                        batch_results,
+                        strict=True,
                     ):
-                        slot, block_number = slot_data
+                        slot, _ = slot_data
 
                         if not success:
                             # API error - skip this slot, will retry later

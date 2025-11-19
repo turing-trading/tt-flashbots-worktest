@@ -22,7 +22,7 @@ import json
 import os
 import signal
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -32,12 +32,14 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from websockets.legacy.client import WebSocketClientProtocol
 
 from src.analysis.builder_name import parse_builder_name_from_extra_data
-from src.analysis.db import AnalysisPBSV2DB
-from src.analysis.models import AnalysisPBSV2
+from src.analysis.db import AnalysisPBSV3DB
+from src.analysis.models import AnalysisPBSV3
+from src.data.adjustments.db import UltrasoundAdjustmentDB
 from src.data.blocks.db import BlockDB
 from src.data.blocks.models import Block
-from src.data.proposers.db import ProposerBalancesDB
-from src.data.proposers.models import ProposerBalance
+from src.data.proposers.db import ExtraBuilderBalanceDB, ProposerBalancesDB
+from src.data.proposers.known_builder_addresses import KNOWN_BUILDER_ADDRESSES
+from src.data.proposers.models import ExtraBuilderBalance, ProposerBalance
 from src.data.relays.constants import RELAYS
 from src.data.relays.db import RelaysPayloadsDB
 from src.data.relays.models import RelaysPayloads
@@ -227,6 +229,9 @@ class LiveProcessor:
             block_number = parse_hex_block_number(header)
             timestamp = parse_hex_timestamp(header["timestamp"])
 
+            # Get miner address for later stages
+            miner_address = header.get("miner", "")
+
             # Stage 1: Fetch/insert block
             block = await self._store_block(block_number)
             if not block:
@@ -235,7 +240,7 @@ class LiveProcessor:
 
             # Stage 2: Fetch/insert proposer balance
             balance_data = await self._store_proposer_balance(
-                block_number, header.get("miner")
+                block_number, miner_address
             )
 
             # Stage 3: Fetch/insert relay payloads (with smart waiting)
@@ -243,13 +248,26 @@ class LiveProcessor:
                 block_number, timestamp
             )
 
-            # Stage 4: Compute/insert analysis (using data from previous stages)
+            # Stage 4: Fetch extra builder balances (for V3)
+            extra_builder_data = await self._fetch_extra_builder_balances(
+                block_number, miner_address
+            )
+
+            # Stage 5: Fetch Ultrasound adjustment if applicable
+            # First extract slot from relay data
+            slot = relay_data[0].get("slot") if relay_data else None
+            adjustment_data = await self._fetch_ultrasound_adjustment(slot, relay_data)
+
+            # Stage 6: Compute/insert analysis (using data from previous stages)
             await self._store_analysis_simple(
                 block_number,
                 block.timestamp,
                 block.extra_data,
+                miner_address,
                 balance_data,
                 relay_data,
+                extra_builder_data,
+                adjustment_data,
             )
 
         except Exception as e:
@@ -593,15 +611,187 @@ class LiveProcessor:
             logger.debug(f"Error fetching {relay}: {e}")
             return None
 
+    async def _fetch_extra_builder_balances(
+        self, block_number: int, miner_address: str
+    ) -> list[dict[str, Any]]:
+        """Fetch and store extra builder balance increases for known builder addresses.
+
+        Args:
+            block_number: Block number
+            miner_address: The proposer/miner address
+
+        Returns:
+            List of balance increase dicts for builder addresses
+        """
+        try:
+            # Check if this miner has known builder addresses
+            builder_addresses = KNOWN_BUILDER_ADDRESSES.get(miner_address)
+            if not builder_addresses:
+                return []
+
+            # Fetch and store balances for all builder addresses
+            balance_data = []
+            for builder_address in builder_addresses:
+                # Create RPC requests for balance before and after
+                before_request = {
+                    "jsonrpc": "2.0",
+                    "method": "eth_getBalance",
+                    "params": [builder_address, hex(block_number - 1)],
+                    "id": 1,
+                }
+                after_request = {
+                    "jsonrpc": "2.0",
+                    "method": "eth_getBalance",
+                    "params": [builder_address, hex(block_number)],
+                    "id": 2,
+                }
+
+                # Execute both requests in parallel
+                responses = await asyncio.gather(
+                    self.http_client.post(self.rpc_url, json=before_request),
+                    self.http_client.post(self.rpc_url, json=after_request),
+                )
+
+                balance_before = parse_hex_int(responses[0].json().get("result", "0x0"))
+                balance_after = parse_hex_int(responses[1].json().get("result", "0x0"))
+                balance_increase = balance_after - balance_before
+
+                # Create model
+                extra_builder_balance = ExtraBuilderBalance(
+                    block_number=block_number,
+                    builder_address=builder_address,
+                    miner=miner_address,
+                    balance_before=balance_before,
+                    balance_after=balance_after,
+                    balance_increase=balance_increase,
+                )
+
+                # Store in database
+                await upsert_model(
+                    db_model_class=ExtraBuilderBalanceDB,
+                    pydantic_model=extra_builder_balance,
+                    primary_key_value=(block_number, builder_address),
+                )
+
+                balance_data.append(
+                    {
+                        "builder_address": builder_address,
+                        "balance_increase": balance_increase,
+                    }
+                )
+
+            logger.info(
+                f"Stored {len(balance_data)} extra builder balances for block #{block_number}"
+            )
+            return balance_data
+
+        except Exception as e:
+            logger.error(
+                f"Failed to fetch/store extra builder balances for block #{block_number}: {e}"
+            )
+            return []
+
+    async def _fetch_ultrasound_adjustment(
+        self, slot: int | None, relay_data: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
+        """Fetch and store Ultrasound adjustment data if Ultrasound relay is present.
+
+        Args:
+            slot: Beacon chain slot number
+            relay_data: List of relay payload dicts
+
+        Returns:
+            Dict with delta (relay fee) or None if not available
+        """
+        if slot is None or not relay_data:
+            return None
+
+        # Check if Ultrasound relay is in the relay data
+        ultrasound_relay = "relay-analytics.ultrasound.money"
+        has_ultrasound = any(r.get("relay") == ultrasound_relay for r in relay_data)
+
+        if not has_ultrasound:
+            return None
+
+        try:
+            # Fetch from Ultrasound API
+            url = f"https://relay-analytics.ultrasound.money/ultrasound/v1/data/adjustments?slot={slot}"
+            response = await self.http_client.get(url, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+
+            # API returns {"data": [...]}
+            adjustment_data = None
+            if "data" in data and data["data"]:
+                adjustment_data = data["data"][0]
+
+            # Create adjustment record
+            now = datetime.now(UTC)
+
+            if adjustment_data is None:
+                # No adjustment found
+                adjustment_record = UltrasoundAdjustmentDB(
+                    slot=slot,
+                    fetched_at=now,
+                    has_adjustment=False,
+                )
+            else:
+                # Parse adjustment data
+                adjusted_value = adjustment_data.get("adjusted_value")
+                delta = adjustment_data.get("delta")
+                submitted_value = adjustment_data.get("submitted_value")
+
+                adjustment_record = UltrasoundAdjustmentDB(
+                    slot=slot,
+                    adjusted_block_hash=adjustment_data.get("adjusted_block_hash"),
+                    adjusted_value=int(adjusted_value) if adjusted_value else None,
+                    block_number=adjustment_data.get("block_number"),
+                    builder_pubkey=adjustment_data.get("builder_pubkey"),
+                    delta=int(delta) if delta else None,
+                    submitted_block_hash=adjustment_data.get("submitted_block_hash"),
+                    submitted_received_at=adjustment_data.get("submitted_received_at"),
+                    submitted_value=int(submitted_value) if submitted_value else None,
+                    fetched_at=now,
+                    has_adjustment=True,
+                )
+
+            # Store in database
+            await upsert_model(
+                db_model_class=UltrasoundAdjustmentDB,
+                pydantic_model=adjustment_record,
+                primary_key_value=slot,
+            )
+
+            # Return relay fee if available
+            if adjustment_data and delta is not None:
+                delta_value = int(delta)
+                logger.info(
+                    f"Stored Ultrasound adjustment for slot {slot}: "
+                    f"delta={wei_to_eth(delta_value):.6f} ETH"
+                )
+                return {"delta": delta_value}
+
+            return None
+
+        except httpx.HTTPError as e:
+            logger.debug(f"HTTP error fetching adjustment for slot {slot}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching adjustment for slot {slot}: {e}")
+            return None
+
     async def _store_analysis_simple(
         self,
         block_number: int,
         block_timestamp: datetime,
         extra_data: str,
+        miner_address: str,
         balance_data: dict[str, Any] | None,
         relay_data: list[dict[str, Any]],
+        extra_builder_data: list[dict[str, Any]],
+        adjustment_data: dict[str, Any] | None,
     ) -> None:
-        """Compute and store PBS analysis using data from previous stages.
+        """Compute and store PBS analysis V3 using data from previous stages.
 
         No database queries - all data passed as parameters.
 
@@ -609,8 +799,11 @@ class LiveProcessor:
             block_number: Block number.
             block_timestamp: Block timestamp.
             extra_data: Block extra_data for builder name parsing.
+            miner_address: The proposer/miner address.
             balance_data: Balance data from proposer step.
             relay_data: Relay data from relay step.
+            extra_builder_data: Extra builder balance data.
+            adjustment_data: Ultrasound adjustment data with delta (relay fee).
         """
         try:
             # Process relay data
@@ -618,11 +811,14 @@ class LiveProcessor:
             n_relays = len(relay_data) if relay_data else 0
             is_block_vanilla = n_relays == 0
 
-            # Get max relay value (proposer subsidy)
+            # Get max relay value (proposer subsidy) and slot
             proposer_subsidy = 0.0
+            slot = None
             if relay_data:
                 max_value = max(r["value"] for r in relay_data)
                 proposer_subsidy = wei_to_eth(max_value) or 0.0
+                # Get slot from first relay (all relays have same slot for a block)
+                slot = relay_data[0].get("slot")
 
             # Get builder balance increase
             builder_balance_increase = 0.0
@@ -631,14 +827,37 @@ class LiveProcessor:
                     wei_to_eth(balance_data["balance_increase"]) or 0.0
                 )
 
-            # Calculate total value
-            total_value = builder_balance_increase + proposer_subsidy
+            # Calculate builder extra transfers (only positive values)
+            builder_extra_transfers = 0.0
+            if extra_builder_data:
+                positive_transfers = [
+                    d["balance_increase"]
+                    for d in extra_builder_data
+                    if d["balance_increase"] > 0
+                ]
+                if positive_transfers:
+                    builder_extra_transfers = (
+                        sum(wei_to_eth(t) or 0.0 for t in positive_transfers)
+                    )
+
+            # Get relay fee from adjustment data (if available)
+            relay_fee = None
+            if adjustment_data and adjustment_data.get("delta") is not None:
+                relay_fee = wei_to_eth(adjustment_data["delta"])
+
+            # Calculate total value including all components
+            total_value = (
+                builder_balance_increase
+                + proposer_subsidy
+                + (relay_fee or 0.0)
+                + builder_extra_transfers
+            )
 
             # Parse builder name from extra_data
             builder_name = parse_builder_name_from_extra_data(extra_data)
 
-            # Create analysis model
-            analysis = AnalysisPBSV2(
+            # Create analysis model V3
+            analysis = AnalysisPBSV3(
                 block_number=block_number,
                 block_timestamp=block_timestamp,
                 builder_balance_increase=builder_balance_increase,
@@ -648,19 +867,22 @@ class LiveProcessor:
                 n_relays=n_relays,
                 relays=relays_list,
                 builder_name=builder_name,
+                slot=slot,
+                builder_extra_transfers=builder_extra_transfers,
+                relay_fee=relay_fee,
             )
 
             # Store in database
             await upsert_model(
-                db_model_class=AnalysisPBSV2DB,
+                db_model_class=AnalysisPBSV3DB,
                 pydantic_model=analysis,
                 primary_key_value=analysis.block_number,
             )
 
             self.analysis_processed += 1
             logger.info(
-                f"Stored PBS analysis for block #{block_number} "
-                f"(builder: {builder_name})"
+                f"Stored PBS analysis V3 for block #{block_number} "
+                f"(builder: {builder_name}, slot: {slot})"
             )
 
         except Exception as e:
