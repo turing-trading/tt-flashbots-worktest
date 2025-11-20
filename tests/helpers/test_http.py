@@ -6,12 +6,17 @@ import httpx
 import pytest
 
 from src.helpers.http import (
+    create_http_client,
+    fetch_json,
+    handle_http_errors,
     log_and_suppress_errors,
+    post_json,
     retry_with_backoff,
 )
 
 
 if TYPE_CHECKING:
+    from pytest_httpx import HTTPXMock
     from unittest.mock import AsyncMock
 
 
@@ -264,3 +269,335 @@ class TestHttpxIntegration:
         result = await fetch_with_errors()
         assert result == "success"
         assert call_count == 2
+
+
+class TestFetchJson:
+    """Tests for fetch_json function using pytest-httpx."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_json_success(self, httpx_mock: "HTTPXMock") -> None:
+        """Test successful JSON fetch."""
+        httpx_mock.add_response(
+            url="https://api.example.com/data",
+            json={"key": "value", "count": 42},
+        )
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_json(client, "https://api.example.com/data")
+
+        assert result == {"key": "value", "count": 42}
+
+    @pytest.mark.asyncio
+    async def test_fetch_json_list_response(self, httpx_mock: "HTTPXMock") -> None:
+        """Test JSON fetch with list response."""
+        httpx_mock.add_response(
+            url="https://api.example.com/items",
+            json=[{"id": 1}, {"id": 2}, {"id": 3}],
+        )
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_json(client, "https://api.example.com/items")
+
+        assert result == [{"id": 1}, {"id": 2}, {"id": 3}]
+
+    @pytest.mark.asyncio
+    async def test_fetch_json_404_returns_none(self, httpx_mock: "HTTPXMock") -> None:
+        """Test 404 response returns None."""
+        httpx_mock.add_response(
+            url="https://api.example.com/notfound",
+            status_code=404,
+        )
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_json(client, "https://api.example.com/notfound")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_json_500_returns_none(self, httpx_mock: "HTTPXMock") -> None:
+        """Test 500 error returns None."""
+        httpx_mock.add_response(
+            url="https://api.example.com/error",
+            status_code=500,
+            text="Internal Server Error",
+        )
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_json(client, "https://api.example.com/error")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_json_timeout_returns_none(self, httpx_mock: "HTTPXMock") -> None:
+        """Test timeout returns None."""
+        httpx_mock.add_exception(httpx.TimeoutException("Request timed out"))
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_json(client, "https://api.example.com/slow")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_json_with_custom_timeout(self, httpx_mock: "HTTPXMock") -> None:
+        """Test fetch with custom timeout parameter."""
+        httpx_mock.add_response(
+            url="https://api.example.com/data",
+            json={"status": "ok"},
+        )
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_json(client, "https://api.example.com/data", timeout=30.0)
+
+        assert result == {"status": "ok"}
+
+    @pytest.mark.asyncio
+    async def test_fetch_json_no_raise_on_error(self, httpx_mock: "HTTPXMock") -> None:
+        """Test fetch with raise_for_status=False."""
+        httpx_mock.add_response(
+            url="https://api.example.com/error",
+            status_code=400,
+            json={"error": "bad request"},
+        )
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_json(
+                client,
+                "https://api.example.com/error",
+                raise_for_status=False,
+            )
+
+        assert result == {"error": "bad request"}
+
+
+class TestPostJson:
+    """Tests for post_json function using pytest-httpx."""
+
+    @pytest.mark.asyncio
+    async def test_post_json_success(self, httpx_mock: "HTTPXMock") -> None:
+        """Test successful JSON POST."""
+        httpx_mock.add_response(
+            url="https://api.example.com/submit",
+            method="POST",
+            json={"id": 123, "status": "created"},
+        )
+
+        async with httpx.AsyncClient() as client:
+            result = await post_json(
+                client,
+                "https://api.example.com/submit",
+                {"name": "test", "value": 42},
+            )
+
+        assert result == {"id": 123, "status": "created"}
+
+        # Verify the request payload
+        request = httpx_mock.get_request()
+        assert request.method == "POST"
+        # JSON can be serialized with or without spaces
+        import json
+        assert json.loads(request.read()) == {"name": "test", "value": 42}
+
+    @pytest.mark.asyncio
+    async def test_post_json_error_returns_none(self, httpx_mock: "HTTPXMock") -> None:
+        """Test POST error returns None."""
+        httpx_mock.add_response(
+            url="https://api.example.com/submit",
+            method="POST",
+            status_code=500,
+        )
+
+        async with httpx.AsyncClient() as client:
+            result = await post_json(
+                client,
+                "https://api.example.com/submit",
+                {"data": "test"},
+            )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_post_json_with_custom_timeout(self, httpx_mock: "HTTPXMock") -> None:
+        """Test POST with custom timeout."""
+        httpx_mock.add_response(
+            url="https://api.example.com/submit",
+            method="POST",
+            json={"success": True},
+        )
+
+        async with httpx.AsyncClient() as client:
+            result = await post_json(
+                client,
+                "https://api.example.com/submit",
+                {"data": "value"},
+                timeout=60.0,
+            )
+
+        assert result == {"success": True}
+
+    @pytest.mark.asyncio
+    async def test_post_json_network_error_returns_none(
+        self, httpx_mock: "HTTPXMock"
+    ) -> None:
+        """Test network error returns None."""
+        httpx_mock.add_exception(httpx.ConnectError("Connection failed"))
+
+        async with httpx.AsyncClient() as client:
+            result = await post_json(
+                client,
+                "https://api.example.com/submit",
+                {"data": "test"},
+            )
+
+        assert result is None
+
+
+class TestCreateHttpClient:
+    """Tests for create_http_client function."""
+
+    def test_create_client_with_default_timeout(self) -> None:
+        """Test creating client with default timeout."""
+        client = create_http_client()
+        assert isinstance(client, httpx.AsyncClient)
+        assert client.timeout.connect is not None
+
+    def test_create_client_with_custom_timeout(self) -> None:
+        """Test creating client with custom timeout."""
+        client = create_http_client(timeout=60.0)
+        assert isinstance(client, httpx.AsyncClient)
+
+    def test_create_client_with_custom_headers(self) -> None:
+        """Test creating client with custom headers."""
+        headers = {"Authorization": "Bearer token123"}
+        client = create_http_client(headers=headers)
+        assert "Authorization" in client.headers
+
+
+class TestHandleHttpErrors:
+    """Tests for handle_http_errors decorator using pytest-httpx."""
+
+    @pytest.mark.asyncio
+    async def test_handle_errors_returns_default_on_404(
+        self, httpx_mock: "HTTPXMock"
+    ) -> None:
+        """Test decorator returns default value on 404."""
+        httpx_mock.add_response(
+            url="https://api.example.com/missing",
+            status_code=404,
+        )
+
+        @handle_http_errors(default_return=[], log_errors=False)
+        async def fetch_items(client: httpx.AsyncClient) -> list[dict]:
+            response = await client.get("https://api.example.com/missing")
+            response.raise_for_status()
+            return response.json()
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_items(client)
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_handle_errors_returns_default_on_500(
+        self, httpx_mock: "HTTPXMock"
+    ) -> None:
+        """Test decorator returns default value on server error."""
+        httpx_mock.add_response(
+            url="https://api.example.com/error",
+            status_code=500,
+            text="Internal Server Error",
+        )
+
+        @handle_http_errors(default_return={"error": True}, log_errors=False)
+        async def fetch_data(client: httpx.AsyncClient) -> dict:
+            response = await client.get("https://api.example.com/error")
+            response.raise_for_status()
+            return response.json()
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_data(client)
+
+        assert result == {"error": True}
+
+    @pytest.mark.asyncio
+    async def test_handle_errors_success_returns_value(
+        self, httpx_mock: "HTTPXMock"
+    ) -> None:
+        """Test decorator returns actual value on success."""
+        httpx_mock.add_response(
+            url="https://api.example.com/data",
+            json={"status": "ok"},
+        )
+
+        @handle_http_errors(default_return=None, log_errors=False)
+        async def fetch_status(client: httpx.AsyncClient) -> dict:
+            response = await client.get("https://api.example.com/data")
+            response.raise_for_status()
+            return response.json()
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_status(client)
+
+        assert result == {"status": "ok"}
+
+    @pytest.mark.asyncio
+    async def test_handle_errors_on_timeout(self, httpx_mock: "HTTPXMock") -> None:
+        """Test decorator handles timeout exceptions."""
+        httpx_mock.add_exception(httpx.TimeoutException("Request timed out"))
+
+        @handle_http_errors(default_return="timeout", log_errors=False)
+        async def fetch_slow(client: httpx.AsyncClient) -> str:
+            response = await client.get("https://api.example.com/slow")
+            return response.text
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_slow(client)
+
+        assert result == "timeout"
+
+
+class TestHttpIntegrationWithDecorators:
+    """Integration tests combining decorators with HTTP calls."""
+
+    @pytest.mark.asyncio
+    async def test_retry_with_fetch_json(self, httpx_mock: "HTTPXMock") -> None:
+        """Test retry decorator with fetch_json."""
+        # fetch_json returns None on error (doesn't raise), so retry won't be triggered
+        httpx_mock.add_response(
+            url="https://api.example.com/data",
+            status_code=500,
+        )
+
+        @retry_with_backoff(max_retries=3, base_delay=0.01, log_errors=False)
+        async def fetch_with_retry(client: httpx.AsyncClient) -> dict | None:
+            return await fetch_json(client, "https://api.example.com/data")
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_with_retry(client)
+
+        # fetch_json returns None on error without raising, so no retry happens
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_combined_decorators(self, httpx_mock: "HTTPXMock") -> None:
+        """Test combining retry and error handling decorators."""
+        call_count = 0
+
+        @handle_http_errors(default_return={"default": True}, log_errors=False)
+        @retry_with_backoff(max_retries=3, base_delay=0.01, log_errors=False)
+        async def fetch_with_both(client: httpx.AsyncClient, url: str) -> dict:
+            nonlocal call_count
+            call_count += 1
+            response = await client.get(url)
+            response.raise_for_status()
+            return response.json()
+
+        # Mock 2 failures then success
+        httpx_mock.add_response(status_code=500)
+        httpx_mock.add_response(status_code=500)
+        httpx_mock.add_response(json={"status": "ok"})
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_with_both(client, "https://api.example.com/data")
+
+        assert result == {"status": "ok"}
+        assert call_count == 3
