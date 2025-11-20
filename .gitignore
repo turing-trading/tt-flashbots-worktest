@@ -103,3 +103,4 @@ models/
 
 # Claude
 CLAUDE.md
+deploy/k8s/docker-registry-secret.yaml
