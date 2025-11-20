@@ -13,15 +13,14 @@ plotly = "^6.4.0"
 httpx = "^0.28.1"
 pydantic = "^2.12.4"
 sqlalchemy = "^2.0.44"
-aiosqlite = "^0.20.0"
 psycopg = { version = "^3.2.0", extras = ["binary"] }
 python-dotenv = "^1.0.0"
 greenlet = "^3.2.4"
 colorlog = "^6.10.1"
 tqdm = "^4.67.1"
 rich = "^14.2.0"
-pyarrow = "^18.1.0"
-websockets = "^14.1"
+pyarrow = "^22.0.0"
+websockets = "^15.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0"

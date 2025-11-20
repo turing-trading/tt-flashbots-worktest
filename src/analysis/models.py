@@ -1,13 +1,9 @@
 """Pydantic models for PBS analysis data."""
 
-
-from typing import TYPE_CHECKING
+# Pydantic needs this at runtime to validate the datetime field
+from datetime import datetime  # noqa: TC003
 
 from pydantic import BaseModel, Field
-
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 
 class AnalysisPBSV3(BaseModel):
