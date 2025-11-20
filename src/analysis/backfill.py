@@ -9,16 +9,6 @@ from asyncio import run
 from sqlalchemy import case, func, select
 
 from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TaskID,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-)
 
 from src.analysis.builder_name import parse_builder_name_from_extra_data
 from src.analysis.db import AnalysisPBSV3DB
@@ -27,19 +17,23 @@ from src.data.adjustments.db import UltrasoundAdjustmentDB
 from src.data.blocks.db import BlockDB
 from src.data.builders.db import BuilderBalancesDB, ExtraBuilderBalanceDB
 from src.data.relays.db import RelaysPayloadsDB
-from src.helpers.db import AsyncSessionLocal, Base, async_engine, upsert_models
+from src.helpers.db import AsyncSessionLocal, create_tables, upsert_models
+from src.helpers.models import AggregatedBlockData
 from src.helpers.parsers import wei_to_eth
+from src.helpers.progress import create_standard_progress
 
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from rich.progress import Progress, TaskID
+
 
 # Default to process last year of data
-START_DATE = datetime.now(tz=UTC) - timedelta(days=1)
+START_DATE: datetime = datetime.now(tz=UTC) - timedelta(days=1)
 # 2024-01-01
 # START_DATE = datetime(2024, 2, 1)
-END_DATE = datetime.now(tz=UTC) - timedelta(minutes=10)
+END_DATE: datetime | None = datetime.now(tz=UTC) - timedelta(minutes=10)
 
 
 class BackfillAnalysisPBSV3:
@@ -56,8 +50,7 @@ class BackfillAnalysisPBSV3:
 
     async def create_tables(self) -> None:
         """Create tables if they don't exist."""
-        async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        await create_tables()
 
     async def _get_missing_blocks(self, session: AsyncSession) -> list[tuple[int, ...]]:
         """Get block numbers that exist in blocks table but not in analysis_pbs_v3.
@@ -117,7 +110,7 @@ class BackfillAnalysisPBSV3:
 
     async def _aggregate_block_data(
         self, session: AsyncSession, block_numbers: list[int]
-    ) -> list[dict]:
+    ) -> list[AggregatedBlockData]:
         """Aggregate data from blocks, builder_balance, relays_payloads.
 
         Also includes adjustments and extra_builder_balance.
@@ -127,7 +120,7 @@ class BackfillAnalysisPBSV3:
             block_numbers: List of block numbers to aggregate
 
         Returns:
-            List of dictionaries with aggregated data
+            List of AggregatedBlockData models with aggregated data
         """
         # Build the aggregation query with all V3 fields
         # Note: We use CASE WHEN to filter only positive balance
@@ -197,67 +190,83 @@ class BackfillAnalysisPBSV3:
         result = await session.execute(stmt)
         rows = result.fetchall()
 
-        # Convert to dictionaries and convert Wei to ETH
-        aggregated_data = []
+        # Convert to AggregatedBlockData models
+        aggregated_data: list[AggregatedBlockData] = []
         for row in rows:
-            # Filter out None values from relays array
-            relays = [r for r in (row.relays or []) if r is not None]
-            relays_list = relays or None
+            # Unpack tuple from SQL result
+            (
+                block_number,
+                block_timestamp,
+                extra_data,
+                builder_balance_increase_wei,
+                raw_relays,
+                proposer_subsidy_wei,
+                slot,
+                builder_extra_transfers_wei,
+                relay_fee_wei,
+            ) = row
+
+            # Get relays array (None-safe, filter out None values from array_agg)
+            relays: list[str] = [r for r in list(raw_relays or []) if r is not None]  # type: ignore[misc]
+            relays_list: list[str] | None = relays or None
 
             # Calculate computed fields
-            n_relays = len(relays) if relays else 0
-            is_block_vanilla = n_relays == 0
+            n_relays: int = len(relays)
+            is_block_vanilla: bool = n_relays == 0
 
             # Convert Wei to ETH using helper with defaults
-            builder_balance_increase = wei_to_eth(row.builder_balance_increase) or 0.0
-            proposer_subsidy = wei_to_eth(row.proposer_subsidy) or 0.0
+            builder_balance_increase: float = (
+                wei_to_eth(builder_balance_increase_wei) or 0.0
+            )
+            proposer_subsidy: float = wei_to_eth(proposer_subsidy_wei) or 0.0
 
             # Parse builder name directly from extra_data
-            builder_name = parse_builder_name_from_extra_data(row.extra_data)
+            builder_name: str = parse_builder_name_from_extra_data(extra_data)
 
             # V3 specific fields
-            slot = row.slot  # Can be None for vanilla blocks
-            builder_extra_transfers = wei_to_eth(row.builder_extra_transfers_wei) or 0.0
-            relay_fee = wei_to_eth(row.relay_fee_wei)  # Can be None
+            builder_extra_transfers: float = (
+                wei_to_eth(builder_extra_transfers_wei) or 0.0
+            )
+            relay_fee: float | None = wei_to_eth(relay_fee_wei)
 
             # Calculate total value including all components (treat None relay_fee as 0)
-            total_value = (
+            total_value: float = (
                 builder_balance_increase + proposer_subsidy + (relay_fee or 0.0)
             )
 
             if total_value < 0 and builder_extra_transfers > 0:
                 total_value += builder_extra_transfers
 
-            aggregated_data.append({
-                "block_number": row.block_number,
-                "block_timestamp": row.block_timestamp,
-                "builder_balance_increase": builder_balance_increase,
-                "proposer_subsidy": proposer_subsidy,
-                "total_value": total_value,
-                "is_block_vanilla": is_block_vanilla,
-                "n_relays": n_relays,
-                "relays": relays_list,
-                "builder_name": builder_name,
-                "slot": slot,
-                "builder_extra_transfers": builder_extra_transfers,
-                "relay_fee": relay_fee,
-            })
+            aggregated_data.append(
+                AggregatedBlockData(
+                    block_number=block_number,
+                    block_timestamp=block_timestamp,
+                    builder_balance_increase=builder_balance_increase,
+                    proposer_subsidy=proposer_subsidy,
+                    total_value=total_value,
+                    is_block_vanilla=is_block_vanilla,
+                    n_relays=n_relays,
+                    relays=relays_list,
+                    builder_name=builder_name,
+                    slot=slot,
+                    builder_extra_transfers=builder_extra_transfers,
+                    relay_fee=relay_fee,
+                )
+            )
 
         return aggregated_data
 
-    async def _store_analysis_data(
-        self, data: list[dict]
-    ) -> None:
+    async def _store_analysis_data(self, data: list[AggregatedBlockData]) -> None:
         """Store aggregated analysis data in the database.
 
         Args:
-            data: List of aggregated data dictionaries
+            data: List of aggregated data models
         """
         if not data:
             return
 
-        # Convert dicts to pydantic models
-        models = [AnalysisPBSV3(**item) for item in data]
+        # Convert AggregatedBlockData to AnalysisPBSV3 models
+        models = [AnalysisPBSV3(**item.model_dump()) for item in data]
 
         # Upsert data into analysis_pbs_v3 table
         await upsert_models(
@@ -346,17 +355,7 @@ class BackfillAnalysisPBSV3:
                 self.console.print(f"[cyan]Start date: {START_DATE}[/cyan]")
 
             # Create progress display
-            progress = Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                MofNCompleteColumn(),
-                TextColumn("•"),
-                TimeElapsedColumn(),
-                TextColumn("•"),
-                TimeRemainingColumn(),
-                console=self.console,
-            )
+            progress = create_standard_progress(console=self.console)
 
             total_processed = 0
 

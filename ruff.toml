@@ -75,6 +75,7 @@ select = [
 ]
 
 ignore = [
+    "TC003",   # Type checking import (handled case-by-case)
     "PLR0914", # Too many return statements (handled case-by-case)
     "SLF001",  # Private member access (handled case-by-case)
     "COM812",  # Missing trailing comma in Python 3.5+ (handled by formatter)

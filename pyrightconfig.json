@@ -13,7 +13,7 @@
     "**/*.pyc",
     "**/*.pyo",
   ],
-  "typeCheckingMode": "standard",
+  "typeCheckingMode": "strict",
   "pythonVersion": "3.14",
   "pythonPlatform": "All",
 }

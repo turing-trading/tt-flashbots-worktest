@@ -2,7 +2,7 @@
 
 import pytest
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select, text
 
@@ -37,7 +37,7 @@ async def test_total_value_calculation(
 
     result = await async_session.execute(stmt)
 
-    violations = []
+    violations: list[tuple[int, float, float, float]] = []
     for row in result:
         expected = (row.builder_balance_increase or 0.0) + (row.proposer_subsidy or 0.0)
         actual = row.total_value or 0.0
@@ -71,7 +71,7 @@ async def test_vanilla_block_classification(
 
     result = await async_session.execute(stmt)
 
-    violations = []
+    violations: list[tuple[int, str, int, Any]] = []
     for row in result:
         if row.is_block_vanilla:
             # Vanilla blocks should have n_relays = 0 and relays = NULL

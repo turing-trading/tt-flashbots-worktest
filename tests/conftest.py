@@ -1,6 +1,5 @@
 """Pytest configuration and shared fixtures for data integrity tests."""
 
-
 import pytest
 import pytest_asyncio
 
@@ -18,7 +17,9 @@ if TYPE_CHECKING:
 
 
 # Apply 10-second timeout to all integration tests
-def pytest_collection_modifyitems(config, items) -> None:
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
     """Add timeout marker to integration tests."""
     for item in items:
         if "integration" in item.keywords:

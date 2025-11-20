@@ -80,7 +80,7 @@ async def test_relay_coverage(async_session: AsyncSession) -> None:
     # Check each relay has data in last 10000 slots (roughly 1 day)
     recent_threshold = max_slot - 10000
 
-    missing_relays = []
+    missing_relays: list[str] = []
     for relay in RELAYS:
         stmt = (
             select(func.count())

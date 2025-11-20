@@ -1,7 +1,7 @@
 """Pydantic models for PBS analysis data."""
 
 # Pydantic needs this at runtime to validate the datetime field
-from datetime import datetime  # noqa: TC003
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 

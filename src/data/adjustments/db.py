@@ -1,8 +1,12 @@
 """Database models for Ultrasound adjustments."""
 
+from datetime import datetime
+from decimal import Decimal
+
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Numeric, String, select
+from sqlalchemy import BigInteger, Boolean, DateTime, Numeric, String, select
+from sqlalchemy.orm import Mapped, mapped_column
 
 from src.helpers.db import Base
 
@@ -17,21 +21,33 @@ class UltrasoundAdjustmentDB(Base):
     __tablename__ = "ultrasound_adjustments"
 
     # Primary key
-    slot = Column(BigInteger, primary_key=True)
+    slot: Mapped[int] = mapped_column(BigInteger, primary_key=True)
 
     # From API response
-    adjusted_block_hash = Column(String(66), nullable=True)
-    adjusted_value = Column(Numeric, nullable=True)  # Wei value as numeric
-    block_number = Column(BigInteger, nullable=True, index=True)
-    builder_pubkey = Column(String(98), nullable=True, index=True)
-    delta = Column(Numeric, nullable=True)  # Adjustment delta in Wei
-    submitted_block_hash = Column(String(66), nullable=True)
-    submitted_received_at = Column(String(30), nullable=True)  # ISO timestamp
-    submitted_value = Column(Numeric, nullable=True)  # Original Wei value
+    adjusted_block_hash: Mapped[str | None] = mapped_column(String(66), nullable=True)
+    adjusted_value: Mapped[Decimal | None] = mapped_column(
+        Numeric, nullable=True
+    )  # Wei value as numeric
+    block_number: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, index=True
+    )
+    builder_pubkey: Mapped[str | None] = mapped_column(
+        String(98), nullable=True, index=True
+    )
+    delta: Mapped[Decimal | None] = mapped_column(
+        Numeric, nullable=True
+    )  # Adjustment delta in Wei
+    submitted_block_hash: Mapped[str | None] = mapped_column(String(66), nullable=True)
+    submitted_received_at: Mapped[str | None] = mapped_column(
+        String(30), nullable=True
+    )  # ISO timestamp
+    submitted_value: Mapped[Decimal | None] = mapped_column(
+        Numeric, nullable=True
+    )  # Original Wei value
 
     # Metadata
-    fetched_at = Column(DateTime, nullable=False)
-    has_adjustment = Column(Boolean, nullable=False, default=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    has_adjustment: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     def __repr__(self) -> str:
         """Return string representation of UltrasoundAdjustment."""
