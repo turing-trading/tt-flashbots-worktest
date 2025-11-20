@@ -7,12 +7,13 @@
 -- Builder Profit (Rolling Window)
 -- Show builder profit over time with rankings
 --
--- The builder's onchain profit is calculated as:
--- 1. builder_balance_increase: Balance difference before and after the block
--- 2. builder_extra_transfers: Additional transfers from known builder addresses
---    (e.g., BuilderNet refund addresses)
+-- Builder profit is derived from the pre-calculated total_value field:
+-- builder_profit = total_value - proposer_subsidy - relay_fee
 --
--- Total profit = builder_balance_increase + builder_extra_transfers
+-- The total_value field already includes the correct logic for builder_extra_transfers:
+-- - builder_extra_transfers are only included when total_value would otherwise be negative
+-- - This represents refunds/adjustments from known builder addresses (e.g., BuilderNet)
+--
 -- This shows how builder profits evolve over time.
 --
 -- Only counts MEV-Boost blocks (where relays is not NULL).
@@ -26,9 +27,7 @@
 -- Returns:
 -- - time: Time bucket for the rolling window
 -- - builder_name: Name of the builder (or "Others")
--- - total_profit_eth: Total profit in ETH for this time bucket (including extra transfers)
--- - builder_balance_eth: Direct builder balance increase for this time bucket
--- - extra_transfers_eth: Additional builder transfers for this time bucket
+-- - total_profit_eth: Total profit in ETH for this time bucket
 -- - avg_profit_eth: Average profit per block in ETH for this time bucket
 -- - block_count: Number of MEV-Boost blocks built in this time bucket
 --
@@ -59,15 +58,12 @@ WITH builder_profits AS (
     SELECT
         $__timeGroup(block_timestamp, $__interval) as time,
         builder_name as builder_name,
-        SUM(builder_balance_increase) as builder_balance_eth,
-        SUM(COALESCE(builder_extra_transfers, 0)) as extra_transfers_eth,
-        SUM(builder_balance_increase + COALESCE(builder_extra_transfers, 0)) as total_profit_eth,
-        AVG(builder_balance_increase + COALESCE(builder_extra_transfers, 0)) as avg_profit_eth,
+        SUM(total_value - proposer_subsidy - COALESCE(relay_fee, 0)) as total_profit_eth,
+        AVG(total_value - proposer_subsidy - COALESCE(relay_fee, 0)) as avg_profit_eth,
         COUNT(*) as block_count
     FROM analysis_pbs_v3
     WHERE
         $__timeFilter(block_timestamp)
-        AND builder_balance_increase IS NOT NULL
         AND NOT is_block_vanilla
 
     GROUP BY time, builder_name
@@ -93,8 +89,6 @@ categorized_profits AS (
             WHEN bp.builder_name IN (SELECT builder_name FROM top_builders) THEN bp.builder_name
             ELSE 'Others'
         END as builder_name,
-        bp.builder_balance_eth,
-        bp.extra_transfers_eth,
         bp.total_profit_eth,
         bp.avg_profit_eth,
         bp.block_count
@@ -104,8 +98,6 @@ aggregated_profits AS (
     SELECT
         time,
         builder_name,
-        SUM(builder_balance_eth) as builder_balance_eth,
-        SUM(extra_transfers_eth) as extra_transfers_eth,
         SUM(total_profit_eth) as total_profit_eth,
         AVG(avg_profit_eth) as avg_profit_eth,
         SUM(block_count) as block_count

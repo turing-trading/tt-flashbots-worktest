@@ -5,15 +5,16 @@
 --
 
 -- Overbidding Builders Analysis
--- Identify builders that pay proposers more than their actual onchain profit
+-- Identify builders that have negative net profit (after paying proposers and relays)
 --
--- Overbidding occurs when the builder's net profit is negative after accounting for:
--- - builder_balance_increase: Direct balance increase of the builder address
--- - builder_extra_transfers: Additional transfers from known builder addresses (e.g., BuilderNet refunds)
---   Only added when builder_balance_increase is negative (loss scenario)
+-- Overbidding occurs when the builder's net profit is negative:
+-- builder_profit = total_value - proposer_subsidy - relay_fee
 --
--- Net profit = builder_balance_increase + builder_extra_transfers (when builder_balance_increase < 0)
--- When the net profit is negative, the builder overpaid relative to their profit (overbid).
+-- When builder_profit < 0, the builder lost money on the block (overbid).
+--
+-- The total_value field already includes the correct logic for builder_extra_transfers:
+-- - builder_extra_transfers are only included when total_value would otherwise be negative
+-- - This represents refunds/adjustments from known builder addresses (e.g., BuilderNet)
 --
 -- Only counts MEV-Boost blocks (where relays is not NULL).
 -- Vanilla blocks are excluded as they don't have proposer subsidies.
@@ -23,8 +24,8 @@
 --
 -- Returns:
 -- - builder_name: Name of the builder (or "Others" for rank >9)
--- - overbid_block_count: Number of blocks where overbid occurred (profit < subsidy)
--- - total_block_count: Total number of blocks by this builder
+-- - overbid_block_count: Number of blocks where builder had negative profit
+-- - total_block_count: Total number of blocks by this builder (min 20 blocks)
 -- - overbid_pct: Percentage of blocks where overbidding occurred
 --
 -- Usage in Grafana:
@@ -34,7 +35,7 @@
 WITH builder_overbids AS (
     SELECT
         builder_name,
-        COUNT(*) FILTER (WHERE (builder_balance_increase + CASE WHEN builder_balance_increase < 0 THEN COALESCE(builder_extra_transfers, 0) ELSE 0 END) < 0) as overbid_block_count,
+        COUNT(*) FILTER (WHERE (total_value - proposer_subsidy - COALESCE(relay_fee, 0)) < 0) as overbid_block_count,
         COUNT(*) as total_block_count
     FROM analysis_pbs_v3
     WHERE
