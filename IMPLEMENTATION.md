@@ -104,31 +104,37 @@ A comprehensive **Ethereum MEV-Boost data pipeline** that collects, processes, a
 
 ### 5. Analytical Queries
 
-**36+ Grafana-ready SQL queries implemented:**
+**20+ Grafana-ready SQL queries organized by category:**
 
-#### Builder Analytics (6 queries)
-- Market share analysis (top 9 + others)
-- Profit tracking and trends
-- Overbidding detection
-- Negative block percentage
+#### A. General Metrics (2 queries)
+- MEV-Boost vs vanilla block adoption
+- MEV-Boost adoption trends over time
 
-#### Profit Analysis (5 queries)
+#### B. Relay Analytics (2 queries)
+- Relay market share distribution
+- Relay usage trends over time
+
+#### C. Builder Analytics (4 queries)
+- Builder market share by block count (static & time-series)
+- Builder market share by ETH profit (static & time-series)
+- Top 9 builders + "Others" grouping
+- Builder profitability rankings
+
+#### D. Value & Profitability (11 queries)
+- Total value distribution across blocks
+- Average total value by block type (MEV-Boost vs vanilla)
+- Negative value block analysis
 - Proposer vs builder profit split
-- Rolling profit trends
-- Block type comparison (vanilla vs MEV-Boost)
-- Top negative blocks identification
+- Proposer profit share per builder
+- Builder overbidding behavior
+- Proposer capture rate of total value
+- Negative value block details (overall, MEV-Boost, vanilla)
 
-#### Market Share Analysis (4 queries)
-- MEV-Boost adoption rates
-- Relay usage distribution
-- Time-based trend analysis
-
-#### Data Integrity (10+ queries)
-- Missing block detection
-- Relay data coverage
-- Gap analysis
-- Ingestion rate monitoring
-- Data quality summaries
+All queries feature:
+- Inline documentation
+- Grafana time range filtering (`$__timeFilter`)
+- Top N builder grouping with "Others" category
+- Static snapshots and time-series variants
 
 ### 6. Testing Infrastructure
 
@@ -237,7 +243,7 @@ Ethereum Node → WebSocket → Live Processor → PostgreSQL → Analysis → G
 - **Total Python files:** 41
 - **Lines of code:** ~4,500+
 - **Database tables:** 8
-- **SQL queries:** 36+
+- **SQL queries:** 20+ (organized in 4 categories)
 - **Test modules:** 8
 - **MEV relays tracked:** 11
 - **Builder mappings:** 59+

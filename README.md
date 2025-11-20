@@ -157,8 +157,14 @@ poetry run python src/data/blocks/backfill.py
 # Backfill builder balances (from Ethereum RPC)
 poetry run python src/data/builders/backfill.py
 
+# Backfill extra builder balances for known addresses (from Ethereum RPC)
+poetry run python src/data/builders/backfill_extra_builders.py
+
 # Backfill relay payloads (from MEV-Boost relay APIs)
 poetry run python src/data/relays/backfill.py
+
+# Backfill Ultrasound relay adjustments
+poetry run python src/data/adjustments/backfill.py
 
 # Aggregate PBS analysis (from all sources)
 poetry run python src/analysis/backfill.py
@@ -176,8 +182,10 @@ The pipeline uses PostgreSQL with the following tables:
 
 - `blocks` - Block headers (includes extra_data for builder identification)
 - `builder_balance` - Builder balance changes
+- `extra_builder_balance` - Extra builder balance tracking for known addresses
 - `relays_payloads` - Relay bid data
-- `analysis_pbs_v2` - Aggregated PBS metrics with builder names parsed from extra_data
+- `ultrasound_adjustments` - Ultrasound relay fee adjustments
+- `analysis_pbs_v3` - Aggregated PBS metrics with builder names parsed from extra_data
 - `*_checkpoints` - Progress tracking for backfill
 
 Tables are created automatically on first run.
@@ -186,28 +194,58 @@ Tables are created automatically on first run.
 
 ### Loading Queries
 
-Queries are in `deploy/queries`. To use in Grafana:
+Queries are organized in `deploy/queries/` by category:
+- `A_general/` - MEV-Boost adoption and market share
+- `B_relay/` - Relay distribution and usage
+- `C_builder/` - Builder market share and profitability
+- `D_value_and_profitability/` - Value distribution, profit analysis, and overbidding
+
+To use in Grafana:
 
 1. Add PostgreSQL data source pointing to your database
 2. Create a new panel
-3. Copy query contents into the SQL editor
+3. Copy query contents from the appropriate category into the SQL editor
 4. Configure time range variables (`$__timeFilter`, `$__timeGroup`)
 
-### Available Queries
+### Available Queries by Category
 
-| Query | Description | Type |
-|-------|-------------|------|
-| `builder_market_share.sql` | Builder dominance (top 9 + Others) | Static |
-| `builder_market_share_rolling.sql` | Builder market share over time | Time series |
-| `builder_profit.sql` | Builder profitability ranking | Static |
-| `builder_profit_rolling.sql` | Builder profit trends | Time series |
-| `proposer_vs_builder_profit.sql` | Profit split comparison | Static |
-| `proposer_vs_builder_profit_rolling.sql` | Profit split over time | Time series |
-| `mev_boost_market_share.sql` | MEV-Boost vs vanilla blocks | Static |
-| `relay_market_share.sql` | Relay usage distribution | Static |
+#### A. General Metrics
+| File | Description | Type |
+|------|-------------|------|
+| `1_mev_boost_market_share.sql` | MEV-Boost vs vanilla blocks | Static |
+| `2_mev_boost_market_share.sql` | MEV-Boost adoption over time | Time series |
+
+#### B. Relay Analytics
+| File | Description | Type |
+|------|-------------|------|
+| `1_relay_market_share.sql` | Relay usage distribution | Static |
+| `2_relay_market_share.sql` | Relay market share over time | Time series |
+
+#### C. Builder Analytics
+| File | Description | Type |
+|------|-------------|------|
+| `1_builder_market_share_number_of_blocks.sql` | Builder dominance by block count (top 9 + Others) | Static |
+| `2_builder_market_share_number_of_blocks.sql` | Builder market share over time | Time series |
+| `3_builder_market_share_eth_profit.sql` | Builder market share by ETH profit | Static |
+| `4_builder_market_share_eth_profit.sql` | Builder ETH profit over time | Time series |
+
+#### D. Value & Profitability
+| File | Description | Type |
+|------|-------------|------|
+| `1_total_value_distribution_percent.sql` | Total value distribution across blocks | Static |
+| `2_total_value_distribution_percent_1.sql` | Total value distribution (time series) | Time series |
+| `3_average_total_value.sql` | Average total value by block type | Static |
+| `4_negative_total_value.sql` | Negative value block percentage | Static |
+| `5_proposer_vs_builder_profit.sql` | Profit split between proposers and builders | Static |
+| `6_proposer_share_per_builder.sql` | Proposer profit share by builder | Static |
+| `7_overbid_distribution.sql` | Builder overbidding behavior | Static |
+| `8_proposer_share_of_total_value.sql` | Proposer capture rate of total value | Static |
+| `9_negative_total_value_blocks_mev_boost.sql` | Negative value MEV-Boost blocks | Static |
+| `10_negative_total_value_blocks_vanilla.sql` | Negative value vanilla blocks | Static |
+| `11_negative_total_value_blocks.sql` | All negative value block details | Static |
 
 All queries include:
 - Inline documentation explaining purpose and usage
 - Grafana configuration instructions
-- Support for time range filtering
-- Example visualization settings
+- Support for time range filtering with `$__timeFilter`
+- Top N builders with "Others" grouping where applicable

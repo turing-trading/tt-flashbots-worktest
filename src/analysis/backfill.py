@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from asyncio import run
 
 from sqlalchemy import case, func, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from rich.console import Console
 from rich.progress import (
@@ -23,11 +22,12 @@ from rich.progress import (
 
 from src.analysis.builder_name import parse_builder_name_from_extra_data
 from src.analysis.db import AnalysisPBSV3DB
+from src.analysis.models import AnalysisPBSV3
 from src.data.adjustments.db import UltrasoundAdjustmentDB
 from src.data.blocks.db import BlockDB
 from src.data.builders.db import BuilderBalancesDB, ExtraBuilderBalanceDB
 from src.data.relays.db import RelaysPayloadsDB
-from src.helpers.db import AsyncSessionLocal, Base, async_engine
+from src.helpers.db import AsyncSessionLocal, Base, async_engine, upsert_models
 from src.helpers.parsers import wei_to_eth
 
 
@@ -246,42 +246,24 @@ class BackfillAnalysisPBSV3:
         return aggregated_data
 
     async def _store_analysis_data(
-        self, session: AsyncSession, data: list[dict]
+        self, data: list[dict]
     ) -> None:
         """Store aggregated analysis data in the database.
 
         Args:
-            session: Database session
             data: List of aggregated data dictionaries
         """
         if not data:
             return
 
-        # Upsert data into analysis_pbs_v3 table
-        stmt = pg_insert(AnalysisPBSV3DB).values(data)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["block_number"],
-            set_={
-                AnalysisPBSV3DB.block_timestamp: (stmt.excluded.block_timestamp),
-                AnalysisPBSV3DB.builder_balance_increase: (
-                    stmt.excluded.builder_balance_increase
-                ),
-                AnalysisPBSV3DB.proposer_subsidy: (stmt.excluded.proposer_subsidy),
-                AnalysisPBSV3DB.total_value: stmt.excluded.total_value,
-                AnalysisPBSV3DB.is_block_vanilla: (stmt.excluded.is_block_vanilla),
-                AnalysisPBSV3DB.n_relays: stmt.excluded.n_relays,
-                AnalysisPBSV3DB.relays: stmt.excluded.relays,
-                AnalysisPBSV3DB.builder_name: stmt.excluded.builder_name,
-                AnalysisPBSV3DB.slot: stmt.excluded.slot,
-                AnalysisPBSV3DB.builder_extra_transfers: (
-                    stmt.excluded.builder_extra_transfers
-                ),
-                AnalysisPBSV3DB.relay_fee: stmt.excluded.relay_fee,
-            },
-        )
+        # Convert dicts to pydantic models
+        models = [AnalysisPBSV3(**item) for item in data]
 
-        await session.execute(stmt)
-        await session.commit()
+        # Upsert data into analysis_pbs_v3 table
+        await upsert_models(
+            db_model_class=AnalysisPBSV3DB,
+            pydantic_models=models,
+        )
 
     async def _process_batch(
         self,
@@ -305,7 +287,7 @@ class BackfillAnalysisPBSV3:
         aggregated_data = await self._aggregate_block_data(session, block_numbers)
 
         # Store aggregated data
-        await self._store_analysis_data(session, aggregated_data)
+        await self._store_analysis_data(aggregated_data)
 
         # Update progress
         progress.update(task_id, advance=len(block_numbers))

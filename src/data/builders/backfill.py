@@ -8,7 +8,6 @@ import asyncio
 from asyncio import run
 
 from sqlalchemy import text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from dotenv import load_dotenv
 import httpx
@@ -26,7 +25,7 @@ from rich.progress import (
 
 from src.data.builders.db import BuilderBalancesDB
 from src.data.builders.models import BuilderBalance
-from src.helpers.db import AsyncSessionLocal, Base, async_engine
+from src.helpers.db import AsyncSessionLocal, Base, async_engine, upsert_models
 
 
 if TYPE_CHECKING:
@@ -179,7 +178,6 @@ class BackfillBuilderBalancesDelivered:
     async def _process_blocks_batch(
         self,
         client: httpx.AsyncClient,
-        session: AsyncSession,
         blocks: list[tuple[int, str]],
         progress: Progress,
         task_id: TaskID,
@@ -188,7 +186,6 @@ class BackfillBuilderBalancesDelivered:
 
         Args:
             client: HTTP client
-            session: Database session
             blocks: List of (block_number, miner) tuples
             progress: Progress bar
             task_id: Progress task ID
@@ -247,7 +244,7 @@ class BackfillBuilderBalancesDelivered:
             builder_balances.append(builder_balance)
 
         # Store in database
-        await self._store_builder_balances(session, builder_balances)
+        await self._store_builder_balances(builder_balances)
 
         # Update progress
         progress.update(task_id, advance=len(blocks))
@@ -255,28 +252,16 @@ class BackfillBuilderBalancesDelivered:
         return len(blocks)
 
     async def _store_builder_balances(
-        self, session: AsyncSession, balances: list[BuilderBalance]
+        self, balances: list[BuilderBalance]
     ) -> None:
         """Store builder balances in the database."""
         if not balances:
             return
 
-        values = [balance.model_dump() for balance in balances]
-
-        # Upsert using ON CONFLICT
-        stmt = pg_insert(BuilderBalancesDB).values(values)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["block_number"],
-            set_={
-                BuilderBalancesDB.miner: stmt.excluded.miner,
-                BuilderBalancesDB.balance_before: stmt.excluded.balance_before,
-                BuilderBalancesDB.balance_after: stmt.excluded.balance_after,
-                BuilderBalancesDB.balance_increase: stmt.excluded.balance_increase,
-            },
+        await upsert_models(
+            db_model_class=BuilderBalancesDB,
+            pydantic_models=balances,
         )
-
-        await session.execute(stmt)
-        await session.commit()
 
     async def create_tables(self) -> None:
         """Create tables if they don't exist."""
@@ -370,7 +355,7 @@ class BackfillBuilderBalancesDelivered:
                         batch = missing_blocks[i : i + self.db_batch_size]
 
                         processed = await self._process_blocks_batch(
-                            client, session, batch, overall_progress, overall_task
+                            client, batch, overall_progress, overall_task
                         )
                         total_processed += processed
 
