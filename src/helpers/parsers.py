@@ -54,6 +54,9 @@ def parse_hex_int(hex_value: str | None, default: int = 0) -> int:
     Returns:
         int: Parsed integer value
 
+    Raises:
+        ValueError: If hex_value is an empty string
+
     Example:
         >>> parse_hex_int("0xff")
         255
@@ -62,6 +65,9 @@ def parse_hex_int(hex_value: str | None, default: int = 0) -> int:
     """
     if hex_value is None:
         return default
+    if not hex_value:
+        msg = "Invalid hex string"
+        raise ValueError(msg)
     return int(hex_value, 16)
 
 

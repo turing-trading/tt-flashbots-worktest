@@ -2,13 +2,12 @@
 
 from typing import TYPE_CHECKING, cast
 
-from asyncio import CancelledError, create_task, gather, run, sleep
+from asyncio import CancelledError, create_task, gather, run
 
 from sqlalchemy import Column, select
 
 import httpx
 from pydantic import TypeAdapter
-from rich.console import Console
 
 from src.data.relays.constants import (
     BEACON_ENDPOINT,
@@ -23,7 +22,17 @@ from src.data.relays.db import (
     RelaysPayloadsDB,
 )
 from src.data.relays.models import RelaysPayloads
+from src.helpers.backfill import BackfillBase
+from src.helpers.constants import (
+    CONNECTION_TIMEOUT,
+    DEFAULT_TIMEOUT,
+    EXTENDED_TIMEOUT,
+    MAX_CONNECTIONS,
+    MAX_KEEPALIVE_CONNECTIONS,
+    SLOT_JUMP_SIZE,
+)
 from src.helpers.db import AsyncSessionLocal, upsert_models
+from src.helpers.http import retry_with_backoff
 from src.helpers.progress import create_standard_progress
 
 
@@ -33,17 +42,17 @@ if TYPE_CHECKING:
     from rich.progress import TaskID
 
 
-class BackfillRelayPayloadDelivered:
+class BackfillRelayPayloadDelivered(BackfillBase):
     """Backfill relay payload delivered data."""
 
     def __init__(self) -> None:
         """Initialize backfill with relay and endpoint."""
+        super().__init__(batch_size=100)  # Default batch_size (not used by this class)
         self.endpoint = ENDPOINTS.get(
             "proposer_payload_delivered",
             "/relay/v1/data/bidtraces/proposer_payload_delivered",
         )
         self.default_limit = LIMITS.get("proposer_payload_delivered", 200)
-        self.console = Console()
         self.progress = None
         self.tasks: dict[str, TaskID] = {}  # Track progress task IDs per relay
 
@@ -63,9 +72,22 @@ class BackfillRelayPayloadDelivered:
         """Get the latest slot from the beacon endpoint."""
         url = f"{BEACON_ENDPOINT}/eth/v1/beacon/headers/finalized"
         async with httpx.AsyncClient() as client:
-            response = await client.get(url, timeout=30.0)
+            response = await client.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
         return int(response.json()["data"]["header"]["message"]["slot"])
+
+    @retry_with_backoff(log_errors=False)
+    async def _fetch_data_with_retry(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        params: dict[str, str],
+    ) -> list[RelaysPayloads]:
+        """Fetch and validate data from relay endpoint (with automatic retry)."""
+        response = await client.get(url, params=params, timeout=EXTENDED_TIMEOUT)
+        response.raise_for_status()
+        data = TypeAdapter(list[RelaysPayloads]).validate_json(response.text)
+        return list({item.slot: item for item in data}.values())
 
     async def _fetch_data(
         self,
@@ -78,29 +100,11 @@ class BackfillRelayPayloadDelivered:
         limit = self._get_limit_for_relay(relay)
         params = {"cursor": str(cursor), "limit": str(limit)}
 
-        max_retries = 5
-        base_delay = 1  # Start with 1 second delay
-
-        for attempt in range(max_retries):
-            try:
-                response = await client.get(url, params=params, timeout=60.0)
-                response.raise_for_status()
-
-                data = TypeAdapter(list[RelaysPayloads]).validate_json(response.text)
-                return list({item.slot: item for item in data}.values())
-
-            except httpx.TimeoutException:
-                # Retry on timeout with exponential backoff
-                retry_delay = base_delay * (2**attempt)
-                await sleep(retry_delay)
-                continue
-
-            except Exception:
-                retry_delay = base_delay * (2**attempt)  # Exponential backoff
-                await sleep(retry_delay)
-
-        # If all retries failed, return empty list
-        return []
+        try:
+            return await self._fetch_data_with_retry(client, url, params)
+        except Exception:
+            # If all retries failed, return empty list
+            return []
 
     async def _get_checkpoint(
         self, session: AsyncSession, relay: str
@@ -212,8 +216,7 @@ class BackfillRelayPayloadDelivered:
 
                 # Jump back by a larger amount to find where data might exist
                 # Use a large jump to handle relays with sparse historical data
-                jump_size = 50_000  # ~1.7 days worth of slots (12 sec per slot)
-                current_cursor = max(current_cursor - jump_size, end_slot)
+                current_cursor = max(current_cursor - SLOT_JUMP_SIZE, end_slot)
                 continue
 
             # Reset consecutive empty counter when we get data
@@ -319,8 +322,11 @@ class BackfillRelayPayloadDelivered:
             self.tasks[relay] = task_id
 
             # Configure client with extended timeouts for slow relays
-            timeout = httpx.Timeout(10.0, connect=3.0)
-            limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
+            timeout = httpx.Timeout(DEFAULT_TIMEOUT, connect=CONNECTION_TIMEOUT)
+            limits = httpx.Limits(
+                max_keepalive_connections=MAX_KEEPALIVE_CONNECTIONS,
+                max_connections=MAX_CONNECTIONS,
+            )
 
             try:
                 async with httpx.AsyncClient(timeout=timeout, limits=limits) as client:

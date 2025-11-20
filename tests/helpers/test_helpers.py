@@ -2,7 +2,12 @@
 
 import pytest
 
-from src.helpers.parsers import parse_hex_int, parse_hex_timestamp, wei_to_eth
+from src.helpers.parsers import (
+    eth_to_wei,
+    parse_hex_int,
+    parse_hex_timestamp,
+    wei_to_eth,
+)
 
 
 class TestParsers:
@@ -52,6 +57,48 @@ class TestParsers:
     def test_wei_to_eth_none(self) -> None:
         """Test None returns None."""
         assert wei_to_eth(None) is None
+
+    def test_eth_to_wei_valid(self) -> None:
+        """Test ETH to Wei conversion."""
+        # 1 ETH = 10^18 Wei
+        assert eth_to_wei(1.0) == 1_000_000_000_000_000_000
+        assert eth_to_wei(0.5) == 500_000_000_000_000_000
+        assert eth_to_wei(0.0) == 0
+        assert eth_to_wei(1e-18) == 1
+
+    def test_eth_to_wei_none(self) -> None:
+        """Test None returns None."""
+        assert eth_to_wei(None) is None
+
+    def test_parse_hex_timestamp_various_values(self) -> None:
+        """Test parsing various hex timestamps."""
+        from datetime import datetime
+
+        # Test epoch
+        result = parse_hex_timestamp("0x0")
+        assert result.year == 1970
+        assert result.month == 1
+        assert result.day == 1
+
+        # Test recent timestamp
+        result = parse_hex_timestamp("0x65a1b2c3")
+        assert isinstance(result, datetime)
+
+    def test_parse_hex_block_number(self) -> None:
+        """Test parsing block number from header."""
+        from src.helpers.parsers import parse_hex_block_number
+        from src.helpers.models import BlockHeader
+
+        header = BlockHeader(
+            number="0x3e8",  # 1000 in hex
+            hash="0xhash",
+            parentHash="0xparent",
+            miner="0xminer",
+            timestamp="0x64a1b2c3",
+        )
+
+        result = parse_hex_block_number(header)
+        assert result == 1000
 
 
 class TestConstants:

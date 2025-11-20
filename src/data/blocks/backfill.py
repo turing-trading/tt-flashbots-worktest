@@ -9,19 +9,23 @@ import asyncio
 from asyncio import run
 
 from sqlalchemy import func, select, text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 import pandas as pd
 
 from defusedxml import ElementTree
 from dotenv import load_dotenv
 import httpx
-from rich.console import Console
 
 from src.data.blocks.db import BlockCheckpoints, BlockDB
-from src.data.blocks.models import Block
+from src.data.blocks.models import Block, BlockCheckpoint
+from src.helpers.backfill import BackfillBase
 from src.helpers.config import get_eth_rpc_url
-from src.helpers.db import AsyncSessionLocal, create_tables
+from src.helpers.constants import (
+    DEFAULT_BATCH_SIZE,
+    HIGH_PARALLEL_BATCHES,
+    RPC_BATCH_SIZE,
+)
+from src.helpers.db import AsyncSessionLocal, upsert_models
 from src.helpers.parsers import parse_hex_int, parse_hex_timestamp, wei_to_eth
 from src.helpers.progress import create_simple_progress
 
@@ -35,17 +39,17 @@ if TYPE_CHECKING:
 load_dotenv()
 
 
-class BackfillBlocks:
+class BackfillBlocks(BackfillBase):
     """Backfill Ethereum blocks from AWS S3."""
 
     def __init__(
         self,
         start_date: str = "2015-07-30",
         end_date: str | None = None,
-        batch_size: int = 1000,
+        batch_size: int = DEFAULT_BATCH_SIZE,
         eth_rpc_url: str | None = None,
-        rpc_batch_size: int = 50,
-        parallel_batches: int = 30,
+        rpc_batch_size: int = RPC_BATCH_SIZE,
+        parallel_batches: int = HIGH_PARALLEL_BATCHES,
     ) -> None:
         """Initialize backfill.
 
@@ -57,6 +61,7 @@ class BackfillBlocks:
             rpc_batch_size: Number of blocks per JSON-RPC batch request
             parallel_batches: Number of batch RPC requests to run in parallel
         """
+        super().__init__(batch_size)
         self.base_url = "https://aws-public-blockchain.s3.us-east-2.amazonaws.com"
         self.start_date = (
             datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=UTC).date()
@@ -66,7 +71,6 @@ class BackfillBlocks:
             if end_date
             else datetime.now(UTC).date()
         )
-        self.batch_size = batch_size
         # eth_rpc_url is optional for blocks backfill (only needed for missing blocks)
         try:
             self.eth_rpc_url = get_eth_rpc_url(eth_rpc_url)
@@ -74,7 +78,6 @@ class BackfillBlocks:
             self.eth_rpc_url = None
         self.rpc_batch_size = rpc_batch_size
         self.parallel_batches = parallel_batches
-        self.console = Console()
 
     async def _get_completed_dates(self, session: AsyncSession) -> set[str]:
         """Get all dates that have been successfully processed.
@@ -96,14 +99,12 @@ class BackfillBlocks:
             date: Date string in YYYY-MM-DD format
             block_count: Number of blocks processed for this date
         """
-        # Use upsert to handle re-processing of dates
-        stmt = pg_insert(BlockCheckpoints).values(date=date, block_count=block_count)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["date"],
-            set_={"block_count": stmt.excluded.block_count},
+        # Use centralized upsert helper
+        checkpoint = BlockCheckpoint(date=date, block_count=block_count)
+        await upsert_models(
+            db_model_class=BlockCheckpoints,
+            pydantic_models=[checkpoint],
         )
-        await session.execute(stmt)
-        await session.commit()
 
     async def _fetch_parquet(
         self, client: httpx.AsyncClient, date: str
@@ -196,37 +197,11 @@ class BackfillBlocks:
         if not blocks:
             return
 
-        # Process in batches
-        for i in range(0, len(blocks), self.batch_size):
-            batch = blocks[i : i + self.batch_size]
-            values = [block.model_dump() for block in batch]
-
-            # Upsert using ON CONFLICT
-            stmt = pg_insert(BlockDB).values(values)
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["number"],
-                set_={
-                    BlockDB.hash: stmt.excluded.hash,
-                    BlockDB.parent_hash: stmt.excluded.parent_hash,
-                    BlockDB.nonce: stmt.excluded.nonce,
-                    BlockDB.sha3_uncles: stmt.excluded.sha3_uncles,
-                    BlockDB.transactions_root: stmt.excluded.transactions_root,
-                    BlockDB.state_root: stmt.excluded.state_root,
-                    BlockDB.receipts_root: stmt.excluded.receipts_root,
-                    BlockDB.miner: stmt.excluded.miner,
-                    BlockDB.size: stmt.excluded.size,
-                    BlockDB.extra_data: stmt.excluded.extra_data,
-                    BlockDB.gas_limit: stmt.excluded.gas_limit,
-                    BlockDB.gas_used: stmt.excluded.gas_used,
-                    BlockDB.timestamp: stmt.excluded.timestamp,
-                    BlockDB.transaction_count: stmt.excluded.transaction_count,
-                    BlockDB.base_fee_per_gas: stmt.excluded.base_fee_per_gas,
-                },
-            )
-
-            await session.execute(stmt)
-
-        await session.commit()
+        # Use centralized upsert helper
+        await upsert_models(
+            db_model_class=BlockDB,
+            pydantic_models=blocks,
+        )
 
     async def _get_latest_block_number(self, client: httpx.AsyncClient) -> int:
         """Get the latest block number from RPC.
@@ -516,10 +491,6 @@ class BackfillBlocks:
                     )
 
         return fetched_count
-
-    async def create_tables(self) -> None:
-        """Create tables if they don't exist."""
-        await create_tables()
 
     async def _backfill_date(
         self,

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class BlockHeader(BaseModel):
@@ -28,10 +28,7 @@ class BlockHeader(BaseModel):
         None, description="Base fee per gas as hex string", alias="baseFeePerGas"
     )
 
-    class Config:
-        """Pydantic config."""
-
-        extra = "allow"  # Allow additional fields from the websocket
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
 
 
 class AggregatedBlockData(BaseModel):

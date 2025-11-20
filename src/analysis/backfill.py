@@ -8,8 +8,6 @@ from asyncio import run
 
 from sqlalchemy import case, func, select
 
-from rich.console import Console
-
 from src.analysis.builder_name import parse_builder_name_from_extra_data
 from src.analysis.db import AnalysisPBSV3DB
 from src.analysis.models import AnalysisPBSV3
@@ -17,7 +15,9 @@ from src.data.adjustments.db import UltrasoundAdjustmentDB
 from src.data.blocks.db import BlockDB
 from src.data.builders.db import BuilderBalancesDB, ExtraBuilderBalanceDB
 from src.data.relays.db import RelaysPayloadsDB
-from src.helpers.db import AsyncSessionLocal, create_tables, upsert_models
+from src.helpers.backfill import BackfillBase
+from src.helpers.constants import LARGE_BATCH_SIZE
+from src.helpers.db import AsyncSessionLocal, upsert_models
 from src.helpers.models import AggregatedBlockData
 from src.helpers.parsers import wei_to_eth
 from src.helpers.progress import create_standard_progress
@@ -30,27 +30,22 @@ if TYPE_CHECKING:
 
 
 # Default to process last year of data
-START_DATE: datetime = datetime.now(tz=UTC) - timedelta(days=1)
+START_DATE: datetime = datetime.now(tz=UTC) - timedelta(days=3)
 # 2024-01-01
 # START_DATE = datetime(2024, 2, 1)
 END_DATE: datetime | None = datetime.now(tz=UTC) - timedelta(minutes=10)
 
 
-class BackfillAnalysisPBSV3:
+class BackfillAnalysisPBSV3(BackfillBase):
     """Backfill PBS analysis data V3 with slot, extra transfers, and relay fees."""
 
-    def __init__(self, batch_size: int = 10_000) -> None:
+    def __init__(self, batch_size: int = LARGE_BATCH_SIZE) -> None:
         """Initialize backfill.
 
         Args:
             batch_size: Number of blocks to process per batch
         """
-        self.batch_size = batch_size
-        self.console = Console()
-
-    async def create_tables(self) -> None:
-        """Create tables if they don't exist."""
-        await create_tables()
+        super().__init__(batch_size)
 
     async def _get_missing_blocks(self, session: AsyncSession) -> list[tuple[int, ...]]:
         """Get block numbers that exist in blocks table but not in analysis_pbs_v3.
