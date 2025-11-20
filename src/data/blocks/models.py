@@ -25,3 +25,10 @@ class Block(BaseModel):
     timestamp: datetime
     transaction_count: int
     base_fee_per_gas: float | None = None
+
+
+class BlockCheckpoint(BaseModel):
+    """Block backfill checkpoint model."""
+
+    date: str
+    block_count: int

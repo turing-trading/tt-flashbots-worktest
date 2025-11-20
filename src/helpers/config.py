@@ -55,6 +55,48 @@ def get_optional_env(key: str, default: str | None = None) -> str | None:
     return os.getenv(key, default)
 
 
+def get_required_url(
+    env_key: str, url: str | None = None, description: str | None = None
+) -> str:
+    """Get a required URL from parameter or environment variable.
+
+    This is a generalized function for fetching URLs that can be provided
+    directly or loaded from environment variables.
+
+    Args:
+        env_key: Environment variable name to check
+        url: Optional URL to use directly (bypasses env lookup)
+        description: Optional description for error messages (defaults to env_key)
+
+    Returns:
+        The URL from parameter or environment
+
+    Raises:
+        ValueError: If URL is not provided and env var is not set
+
+    Example:
+        ```python
+        from src.helpers.config import get_required_url
+
+        # Generic usage
+        api_url = get_required_url("API_URL", description="API endpoint")
+
+        # With direct URL
+        api_url = get_required_url("API_URL", url="https://api.example.com")
+        ```
+    """
+    if url:
+        return url
+
+    env_value = os.getenv(env_key)
+    if not env_value:
+        desc = description or env_key
+        msg = f"{desc} must be provided or set in {env_key} environment variable"
+        raise ValueError(msg)
+
+    return env_value
+
+
 def get_eth_rpc_url(rpc_url: str | None = None) -> str:
     """Get Ethereum RPC URL from parameter or environment.
 
@@ -78,15 +120,7 @@ def get_eth_rpc_url(rpc_url: str | None = None) -> str:
         rpc_url = get_eth_rpc_url("https://eth.llamarpc.com")
         ```
     """
-    if rpc_url:
-        return rpc_url
-
-    env_rpc_url = os.getenv("ETH_RPC_URL")
-    if not env_rpc_url:
-        msg = "ETH_RPC_URL must be provided or set in environment variables"
-        raise ValueError(msg)
-
-    return env_rpc_url
+    return get_required_url("ETH_RPC_URL", rpc_url, "Ethereum RPC URL")
 
 
 def get_eth_ws_url(ws_url: str | None = None) -> str:
@@ -108,15 +142,7 @@ def get_eth_ws_url(ws_url: str | None = None) -> str:
         ws_url = get_eth_ws_url()
         ```
     """
-    if ws_url:
-        return ws_url
-
-    env_ws_url = os.getenv("ETH_WS_URL")
-    if not env_ws_url:
-        msg = "ETH_WS_URL must be provided or set in environment variables"
-        raise ValueError(msg)
-
-    return env_ws_url
+    return get_required_url("ETH_WS_URL", ws_url, "Ethereum WebSocket URL")
 
 
 __all__ = [
@@ -124,4 +150,5 @@ __all__ = [
     "get_eth_ws_url",
     "get_optional_env",
     "get_required_env",
+    "get_required_url",
 ]

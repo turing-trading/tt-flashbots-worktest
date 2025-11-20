@@ -3,7 +3,7 @@
 # Pydantic needs this at runtime to validate the datetime field
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AnalysisPBSV3(BaseModel):
@@ -65,7 +65,4 @@ class AnalysisPBSV3(BaseModel):
         ),
     )
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

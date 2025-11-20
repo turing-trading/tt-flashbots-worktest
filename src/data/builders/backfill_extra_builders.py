@@ -7,13 +7,14 @@ from asyncio import run
 from sqlalchemy import text
 
 import httpx
-from rich.console import Console
 
 from src.data.builders.db import ExtraBuilderBalanceDB
 from src.data.builders.known_builder_addresses import KNOWN_BUILDER_ADDRESSES
 from src.data.builders.models import ExtraBuilderBalance
+from src.helpers.backfill import BackfillBase
 from src.helpers.config import get_eth_rpc_url
-from src.helpers.db import AsyncSessionLocal, create_tables, upsert_models
+from src.helpers.constants import DB_BATCH_SIZE, DEFAULT_PARALLEL_BATCHES, RPC_BATCH_SIZE
+from src.helpers.db import AsyncSessionLocal, upsert_models
 from src.helpers.progress import create_standard_progress
 from src.helpers.rpc import RPCClient, batch_get_balance_changes
 
@@ -24,15 +25,15 @@ if TYPE_CHECKING:
     from rich.progress import Progress, TaskID
 
 
-class BackfillExtraBuilderBalances:
+class BackfillExtraBuilderBalances(BackfillBase):
     """Backfill extra builder balance increases by querying Ethereum node."""
 
     def __init__(
         self,
         eth_rpc_url: str | None = None,
-        batch_size: int = 10,
-        db_batch_size: int = 100,
-        parallel_batches: int = 5,
+        batch_size: int = RPC_BATCH_SIZE,
+        db_batch_size: int = DB_BATCH_SIZE,
+        parallel_batches: int = DEFAULT_PARALLEL_BATCHES,
     ) -> None:
         """Initialize backfill.
 
@@ -46,12 +47,11 @@ class BackfillExtraBuilderBalances:
             ValueError: If ETH_RPC_URL is not provided and not set in environment
             variables
         """
+        super().__init__(batch_size)
         self.eth_rpc_url = get_eth_rpc_url(eth_rpc_url)
         self.rpc_client = RPCClient(self.eth_rpc_url)
-        self.batch_size = batch_size
         self.db_batch_size = db_batch_size
         self.parallel_batches = parallel_batches
-        self.console = Console()
 
     async def _get_missing_blocks_count(self, session: AsyncSession) -> int:
         """Get total count of missing blocks for known builder addresses.
@@ -203,10 +203,6 @@ class BackfillExtraBuilderBalances:
             db_model_class=ExtraBuilderBalanceDB,
             pydantic_models=balances,
         )
-
-    async def create_tables(self) -> None:
-        """Create tables if they don't exist."""
-        await create_tables()
 
     async def run(self, limit: int | None = None) -> None:
         """Run the backfill process.

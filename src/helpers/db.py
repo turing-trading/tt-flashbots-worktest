@@ -105,10 +105,67 @@ async def upsert_model[DBModelType](
     )
 
 
+async def _perform_upsert[DBModelType](
+    db_model_class: type[DBModelType],
+    pydantic_models: Sequence[BaseModel],
+    extra_fields: dict[str, Any] | None,
+    session: AsyncSession,
+) -> None:
+    """Internal helper to perform the actual upsert operation.
+
+    Args:
+        db_model_class: The SQLAlchemy model class
+        pydantic_models: List of Pydantic model instances with data to upsert
+        extra_fields: Additional fields not in the Pydantic model
+        session: Database session to use
+
+    Raises:
+        ValueError: If the database model class cannot be inspected
+    """
+    # Prepare data for insert
+    data = [model.model_dump() for model in pydantic_models]
+
+    # Add extra fields to each item if provided
+    if extra_fields:
+        for item in data:
+            item.update(extra_fields)
+
+    # Get primary key column names using SQLAlchemy inspection
+    mapper = inspect(db_model_class)
+    if not mapper:
+        msg = f"Cannot inspect {db_model_class}"
+        raise ValueError(msg)
+    pk_columns = [col.name for col in mapper.primary_key]
+
+    # Get all column names from the first data item
+    if not data:
+        return
+
+    all_columns = set(data[0].keys())
+
+    # Create INSERT statement with ON CONFLICT DO UPDATE
+    stmt = pg_insert(db_model_class).values(data)
+
+    # Build the update dict (all columns except primary keys)
+    update_dict = {
+        col: stmt.excluded[col] for col in all_columns if col not in pk_columns
+    }
+
+    # Apply ON CONFLICT DO UPDATE
+    stmt = stmt.on_conflict_do_update(
+        index_elements=pk_columns,
+        set_=update_dict,
+    )
+
+    await session.execute(stmt)
+    await session.commit()
+
+
 async def upsert_models[DBModelType](
     db_model_class: type[DBModelType],
     pydantic_models: Sequence[BaseModel],
     extra_fields: dict[str, Any] | None = None,
+    session: AsyncSession | None = None,
 ) -> None:
     """Upsert multiple models using PostgreSQL INSERT ... ON CONFLICT DO UPDATE.
 
@@ -119,6 +176,7 @@ async def upsert_models[DBModelType](
         db_model_class: The SQLAlchemy model class (e.g., BlockDB, AnalysisPBSDB)
         pydantic_models: List of Pydantic model instances with data to upsert
         extra_fields: Additional fields not in the Pydantic model (e.g., relay name)
+        session: Optional database session to use. If not provided, creates a new one.
 
     Examples:
         await upsert_models(
@@ -129,48 +187,17 @@ async def upsert_models[DBModelType](
     Raises:
         ValueError: If the database model class cannot be inspected
     """
-    async with AsyncSessionLocal() as session:
-        try:
-            # Prepare data for insert
-            data = [model.model_dump() for model in pydantic_models]
-
-            # Add extra fields to each item if provided
-            if extra_fields:
-                for item in data:
-                    item.update(extra_fields)
-
-            # Get primary key column names using SQLAlchemy inspection
-            mapper = inspect(db_model_class)
-            if not mapper:
-                msg = f"Cannot inspect {db_model_class}"
-                raise ValueError(msg)  # noqa: TRY301
-            pk_columns = [col.name for col in mapper.primary_key]
-
-            # Get all column names from the first data item
-            if not data:
-                return
-
-            all_columns = set(data[0].keys())
-
-            # Create INSERT statement with ON CONFLICT DO UPDATE
-            stmt = pg_insert(db_model_class).values(data)
-
-            # Build the update dict (all columns except primary keys)
-            update_dict = {
-                col: stmt.excluded[col] for col in all_columns if col not in pk_columns
-            }
-
-            # Apply ON CONFLICT DO UPDATE
-            stmt = stmt.on_conflict_do_update(
-                index_elements=pk_columns,
-                set_=update_dict,
-            )
-
-            await session.execute(stmt)
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
+    if session is not None:
+        # Use provided session (for testing)
+        await _perform_upsert(db_model_class, pydantic_models, extra_fields, session)
+    else:
+        # Create new session (for production)
+        async with AsyncSessionLocal() as new_session:
+            try:
+                await _perform_upsert(db_model_class, pydantic_models, extra_fields, new_session)
+            except Exception:
+                await new_session.rollback()
+                raise
 
 
 async def create_tables() -> None:
