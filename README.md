@@ -41,7 +41,7 @@ src/
 │   ├── blocks/                # Block header collection
 │   │   ├── backfill.py        # Historical block fetching
 │   │   └── live.py            # Live block streaming
-│   ├── proposers/             # Proposer balance tracking
+│   ├── builders/              # Builder balance tracking
 │   │   ├── backfill.py        # Historical balance calculation
 │   │   └── live.py            # Live balance tracking
 │   ├── relays/                # Relay payload collection
@@ -61,7 +61,7 @@ src/
 ### Data Collection
 
 - **Blocks**: Full block headers with timestamps and miner addresses
-- **Proposer Balances**: Before/after balance calculations to track proposer profit
+- **Builder Balances**: Before/after balance calculations to track proposer profit
 - **Relay Payloads**: MEV-Boost relay bids and winning payloads
 - **Builder Identifiers**: Builder public keys mapped to canonical names
 - **PBS Analysis**: Aggregated view combining all data sources
@@ -170,13 +170,10 @@ Backfill historical data (run in separate terminals):
 poetry run python src/data/blocks/backfill.py
 
 # Backfill proposer balances (from Ethereum RPC)
-poetry run python src/data/proposers/backfill.py
+poetry run python src/data/builders/backfill.py
 
 # Backfill relay payloads (from MEV-Boost relay APIs)
 poetry run python src/data/relays/backfill.py
-
-# Backfill builder identifiers (from relay data)
-poetry run python src/data/builders/backfill.py
 
 # Aggregate PBS analysis (from all sources)
 poetry run python src/analysis/backfill.py
@@ -193,7 +190,7 @@ poetry run python src/analysis/backfill.py
 The pipeline uses PostgreSQL with the following tables:
 
 - `blocks` - Block headers (includes extra_data for builder identification)
-- `proposers_balance` - Proposer balance changes
+- `builders_balance` - Builder balance changes
 - `relays_payloads` - Relay bid data
 - `analysis_pbs_v2` - Aggregated PBS metrics with builder names parsed from extra_data
 - `*_checkpoints` - Progress tracking for backfill
