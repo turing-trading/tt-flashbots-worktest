@@ -2,14 +2,20 @@
 
 import pytest
 import pytest_asyncio
+
+from typing import TYPE_CHECKING
+
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.helpers.db import AsyncSessionLocal
 
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+
 # Apply 10-second timeout to all integration tests
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(config, items) -> None:
     """Add timeout marker to integration tests."""
     for item in items:
         if "integration" in item.keywords:

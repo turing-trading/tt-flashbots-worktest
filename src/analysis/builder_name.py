@@ -9,6 +9,7 @@ This module provides functions for:
 import binascii
 import re
 
+
 # Builder name remapping for consistent naming
 # Maps various builder name variations to canonical names
 BUILDER_NAME_MAPPING = {
@@ -174,7 +175,7 @@ def parse_builder_name_from_extra_data(extra_data: str | None) -> str:
         return "unknown"
 
     # Remove '0x' prefix if present
-    hex_str = extra_data[2:] if extra_data.startswith("0x") else extra_data
+    hex_str = extra_data.removeprefix("0x")
 
     try:
         # Convert hex to bytes
@@ -189,7 +190,7 @@ def parse_builder_name_from_extra_data(extra_data: str | None) -> str:
         builder_name = clean_builder_name(builder_name, apply_advanced_cleaning=True)
 
         # Return cleaned string or 'unknown' if empty
-        return builder_name if builder_name else "unknown"
+        return builder_name or "unknown"
     except Exception:
         # If parsing fails, return 'unknown'
         return "unknown"

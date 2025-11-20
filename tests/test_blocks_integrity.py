@@ -1,17 +1,26 @@
 """Data integrity tests for blocks table."""
 
 import pytest
+
+from typing import TYPE_CHECKING
+
 from sqlalchemy import func, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.blocks.db import BlockDB
+
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 
 # Mark all tests in this module as integration tests (require database)
 pytestmark = pytest.mark.integration
 
 
 @pytest.mark.asyncio
-async def test_block_continuity(async_session: AsyncSession, max_violations: int):
+async def test_block_continuity(
+    async_session: AsyncSession, max_violations: int
+) -> None:
     """Test that there are no gaps in block numbers.
 
     Verifies that all blocks between min and max block numbers exist
@@ -34,12 +43,15 @@ async def test_block_continuity(async_session: AsyncSession, max_violations: int
     expected_count = max_block - min_block + 1
 
     assert actual_count == expected_count, (
-        f"Found block gaps: expected {expected_count} blocks, got {actual_count} (range: {min_block}-{max_block})"
+        f"Found block gaps: expected {expected_count} blocks, got {actual_count} "
+        f"(range: {min_block}-{max_block})"
     )
 
 
 @pytest.mark.asyncio
-async def test_block_hash_uniqueness(async_session: AsyncSession, max_violations: int):
+async def test_block_hash_uniqueness(
+    async_session: AsyncSession, max_violations: int
+) -> None:
     """Test that all block hashes are unique.
 
     Each block should have a unique hash. Duplicate hashes would indicate
@@ -60,7 +72,9 @@ async def test_block_hash_uniqueness(async_session: AsyncSession, max_violations
 
 
 @pytest.mark.asyncio
-async def test_parent_hash_chain(async_session: AsyncSession, max_violations: int):
+async def test_parent_hash_chain(
+    async_session: AsyncSession, max_violations: int
+) -> None:
     """Test that parent hashes form a valid chain.
 
     Each block's parent_hash should match the hash of the previous block,
@@ -87,7 +101,9 @@ async def test_parent_hash_chain(async_session: AsyncSession, max_violations: in
 
 
 @pytest.mark.asyncio
-async def test_timestamp_monotonicity(async_session: AsyncSession, max_violations: int):
+async def test_timestamp_monotonicity(
+    async_session: AsyncSession, max_violations: int
+) -> None:
     """Test that block timestamps are monotonically non-decreasing.
 
     Block timestamps should generally increase or stay the same as block
@@ -107,12 +123,13 @@ async def test_timestamp_monotonicity(async_session: AsyncSession, max_violation
     violations = result.fetchall()
 
     assert len(violations) == 0, (
-        f"Found {len(violations)} timestamp ordering violations (timestamps going backward): {violations[:10]}"
+        f"Found {len(violations)} timestamp ordering violations "
+        f"(timestamps going backward): {violations[:10]}"
     )
 
 
 @pytest.mark.asyncio
-async def test_required_fields_not_null(async_session: AsyncSession):
+async def test_required_fields_not_null(async_session: AsyncSession) -> None:
     """Test that required fields are never NULL.
 
     Core block fields like number, hash, timestamp should never be NULL.
@@ -136,7 +153,9 @@ async def test_required_fields_not_null(async_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_block_hash_format(async_session: AsyncSession, max_violations: int):
+async def test_block_hash_format(
+    async_session: AsyncSession, max_violations: int
+) -> None:
     """Test that block hashes have correct format.
 
     Block hashes should be 66 characters (0x + 64 hex characters).
@@ -156,7 +175,9 @@ async def test_block_hash_format(async_session: AsyncSession, max_violations: in
 
 
 @pytest.mark.asyncio
-async def test_miner_address_format(async_session: AsyncSession, max_violations: int):
+async def test_miner_address_format(
+    async_session: AsyncSession, max_violations: int
+) -> None:
     """Test that miner addresses have correct format.
 
     Miner addresses should be 42 characters (0x + 40 hex characters).
@@ -176,7 +197,9 @@ async def test_miner_address_format(async_session: AsyncSession, max_violations:
 
 
 @pytest.mark.asyncio
-async def test_gas_values_consistency(async_session: AsyncSession, max_violations: int):
+async def test_gas_values_consistency(
+    async_session: AsyncSession, max_violations: int
+) -> None:
     """Test that gas_used is never greater than gas_limit.
 
     The amount of gas used in a block cannot exceed the gas limit.
@@ -195,7 +218,7 @@ async def test_gas_values_consistency(async_session: AsyncSession, max_violation
 
 
 @pytest.mark.asyncio
-async def test_transaction_count_non_negative(async_session: AsyncSession):
+async def test_transaction_count_non_negative(async_session: AsyncSession) -> None:
     """Test that transaction counts are non-negative.
 
     Transaction count should be >= 0 for all blocks.
@@ -211,7 +234,7 @@ async def test_transaction_count_non_negative(async_session: AsyncSession):
 
 @pytest.mark.asyncio
 @pytest.mark.slow
-async def test_no_duplicate_numbers(async_session: AsyncSession):
+async def test_no_duplicate_numbers(async_session: AsyncSession) -> None:
     """Test that block numbers are unique (primary key constraint).
 
     This should be enforced by the database, but we verify it explicitly.

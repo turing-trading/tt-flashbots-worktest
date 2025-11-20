@@ -1,11 +1,17 @@
 """Backfill extra builder balance data using Ethereum JSON-RPC."""
 
-import asyncio
 import os
+
+from typing import TYPE_CHECKING
+
+import asyncio
 from asyncio import run
 
-import httpx
+from sqlalchemy import text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
 from dotenv import load_dotenv
+import httpx
 from rich.console import Console
 from rich.progress import (
     BarColumn,
@@ -17,15 +23,17 @@ from rich.progress import (
     TimeElapsedColumn,
     TimeRemainingColumn,
 )
-from sqlalchemy import text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.builders.db import ExtraBuilderBalanceDB
 from src.data.builders.known_builder_addresses import KNOWN_BUILDER_ADDRESSES
 from src.data.builders.models import ExtraBuilderBalance
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
+
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 
 load_dotenv()
 
@@ -39,7 +47,7 @@ class BackfillExtraBuilderBalances:
         batch_size: int = 10,
         db_batch_size: int = 100,
         parallel_batches: int = 5,
-    ):
+    ) -> None:
         """Initialize backfill.
 
         Args:
@@ -50,8 +58,9 @@ class BackfillExtraBuilderBalances:
         """
         self.eth_rpc_url = eth_rpc_url or os.getenv("ETH_RPC_URL")
         if not self.eth_rpc_url:
+            msg = "ETH_RPC_URL must be provided or set in environment variables"
             raise ValueError(
-                "ETH_RPC_URL must be provided or set in environment variables"
+                msg
             )
 
         self.batch_size = batch_size
@@ -155,14 +164,12 @@ class BackfillExtraBuilderBalances:
         # Build batch JSON-RPC request
         batch_payload = []
         for idx, (address, block_number) in enumerate(requests):
-            batch_payload.append(
-                {
-                    "jsonrpc": "2.0",
-                    "method": "eth_getBalance",
-                    "params": [address, hex(block_number)],
-                    "id": idx,
-                }
-            )
+            batch_payload.append({
+                "jsonrpc": "2.0",
+                "method": "eth_getBalance",
+                "params": [address, hex(block_number)],
+                "id": idx,
+            })
 
         try:
             # eth_rpc_url is guaranteed to be str (validated in __init__)
@@ -192,18 +199,18 @@ class BackfillExtraBuilderBalances:
                 if "result" in result:
                     # Convert hex balance to int
                     balance = int(result["result"], 16)
-                    balance_map[(address, block_number)] = balance
+                    balance_map[address, block_number] = balance
                 else:
                     self.logger.error(
                         f"Error getting balance for {address} at block {block_number}: "
                         f"{result.get('error', 'Unknown error')}"
                     )
-                    balance_map[(address, block_number)] = 0
+                    balance_map[address, block_number] = 0
 
             return balance_map
 
         except Exception as e:
-            self.logger.error(f"Error in batch balance request: {e}")
+            self.logger.exception(f"Error in batch balance request: {e}")
             # Return zeros for all requests on error
             return dict.fromkeys(requests, 0)
 
@@ -237,12 +244,14 @@ class BackfillExtraBuilderBalances:
             # Get builder addresses for this miner
             builder_addresses = KNOWN_BUILDER_ADDRESSES.get(miner, [])
             for builder_address in builder_addresses:
-                balance_requests.append(
-                    (builder_address, block_number - 1)
-                )  # Balance before
-                balance_requests.append(
-                    (builder_address, block_number)
-                )  # Balance after
+                balance_requests.append((
+                    builder_address,
+                    block_number - 1,
+                ))  # Balance before
+                balance_requests.append((
+                    builder_address,
+                    block_number,
+                ))  # Balance after
 
         # Process balance requests in parallel batches
         all_balances = {}
@@ -258,9 +267,9 @@ class BackfillExtraBuilderBalances:
             parallel_chunk = batches[i : i + self.parallel_batches]
 
             # Execute multiple batch requests in parallel
-            results = await asyncio.gather(
-                *[self._batch_get_balances(client, batch) for batch in parallel_chunk]
-            )
+            results = await asyncio.gather(*[
+                self._batch_get_balances(client, batch) for batch in parallel_chunk
+            ])
 
             # Merge results
             for balances in results:

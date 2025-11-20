@@ -1,14 +1,20 @@
 """Database connection helpers."""
 
 import os
-from typing import Any
 
-from dotenv import load_dotenv
-from pydantic import BaseModel
+from typing import TYPE_CHECKING, Any
+
 from sqlalchemy import inspect
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
+
+from dotenv import load_dotenv
+
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel
+
 
 # Load environment variables from .env file
 load_dotenv()
@@ -27,21 +33,25 @@ def get_database_url() -> str:
     """
     postgre_host = os.getenv("POSTGRE_HOST")
     if not postgre_host:
-        raise ValueError("POSTGRE_HOST is not set")
+        msg = "POSTGRE_HOST is not set"
+        raise ValueError(msg)
 
     postgre_port = os.getenv("POSTGRE_PORT", "5432")
 
     postgre_user = os.getenv("POSTGRE_USER")
     if not postgre_user:
-        raise ValueError("POSTGRE_USER is not set")
+        msg = "POSTGRE_USER is not set"
+        raise ValueError(msg)
 
     postgre_password = os.getenv("POSTGRE_PASSWORD")
     if not postgre_password:
-        raise ValueError("POSTGRE_PASSWORD is not set")
+        msg = "POSTGRE_PASSWORD is not set"
+        raise ValueError(msg)
 
     postgre_db = os.getenv("POSTGRE_DB")
     if not postgre_db:
-        raise ValueError("POSTGRE_DB is not set")
+        msg = "POSTGRE_DB is not set"
+        raise ValueError(msg)
 
     # Use psycopg (version 3) as the async PostgreSQL driver
     return (
@@ -105,7 +115,8 @@ async def upsert_model[DBModelType](
         # Get primary key column names using SQLAlchemy inspection
         mapper = inspect(db_model_class)
         if not mapper:
-            raise ValueError(f"Cannot inspect {db_model_class}")
+            msg = f"Cannot inspect {db_model_class}"
+            raise ValueError(msg)
         pk_columns = [col.name for col in mapper.primary_key]
 
         # Create INSERT statement with ON CONFLICT DO UPDATE
@@ -113,9 +124,7 @@ async def upsert_model[DBModelType](
 
         # Build the update dict (all columns except primary keys)
         update_dict = {
-            col: stmt.excluded[col]
-            for col in data.keys()
-            if col not in pk_columns
+            col: stmt.excluded[col] for col in data if col not in pk_columns
         }
 
         # Apply ON CONFLICT DO UPDATE

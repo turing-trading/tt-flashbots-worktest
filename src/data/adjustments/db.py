@@ -1,9 +1,14 @@
 """Database models for Ultrasound adjustments."""
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, Numeric, String, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.helpers.db import Base
+
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class UltrasoundAdjustmentDB(Base):

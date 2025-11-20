@@ -17,19 +17,21 @@ Usage:
     python src/live.py
 """
 
-import asyncio
+from datetime import UTC, datetime
 import json
 import os
 import signal
 import sys
-from datetime import UTC, datetime
-from typing import Any
 
+from typing import TYPE_CHECKING, Any
+
+import asyncio
+
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from dotenv import load_dotenv
 import httpx
 import websockets
-from dotenv import load_dotenv
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from websockets.legacy.client import WebSocketClientProtocol
 
 from src.analysis.builder_name import parse_builder_name_from_extra_data
 from src.analysis.db import AnalysisPBSV3DB
@@ -52,6 +54,11 @@ from src.helpers.parsers import (
     wei_to_eth,
 )
 
+
+if TYPE_CHECKING:
+    from websockets.legacy.client import WebSocketClientProtocol
+
+
 # Load environment variables
 load_dotenv()
 
@@ -67,9 +74,11 @@ class LiveProcessor:
         rpc_url = os.getenv("ETH_RPC_URL")
 
         if not ws_url:
-            raise ValueError("ETH_WS_URL environment variable is not set")
+            msg = "ETH_WS_URL environment variable is not set"
+            raise ValueError(msg)
         if not rpc_url:
-            raise ValueError("ETH_RPC_URL environment variable is not set")
+            msg = "ETH_RPC_URL environment variable is not set"
+            raise ValueError(msg)
 
         self.ws_url: str = ws_url
         self.rpc_url: str = rpc_url
@@ -139,7 +148,7 @@ class LiveProcessor:
                 logger.warning(f"WebSocket connection closed: {e}")
                 self.connection_status = "Disconnected"
             except Exception as e:
-                logger.error(f"WebSocket error: {e}")
+                logger.exception(f"WebSocket error: {e}")
                 self.connection_status = f"Error: {str(e)[:50]}"
 
             if not self.should_shutdown:
@@ -191,9 +200,9 @@ class LiveProcessor:
                         )
 
             except json.JSONDecodeError as e:
-                logger.error(f"Failed to decode WebSocket message: {e}")
+                logger.exception(f"Failed to decode WebSocket message: {e}")
             except Exception as e:
-                logger.error(f"Error processing block header: {e}")
+                logger.exception(f"Error processing block header: {e}")
 
     async def process_headers_from_queue(self) -> None:
         """Consume block headers from queue and process each one."""
@@ -217,7 +226,7 @@ class LiveProcessor:
                 logger.info("Header queue consumer cancelled")
                 break
             except Exception as e:
-                logger.error(f"Error in queue consumer: {e}")
+                logger.exception(f"Error in queue consumer: {e}")
 
     async def _process_header(self, header: dict[str, Any]) -> None:
         """Process a single block header through all stages.
@@ -271,7 +280,7 @@ class LiveProcessor:
             )
 
         except Exception as e:
-            logger.error(f"Error processing block #{block_number}: {e}")
+            logger.exception(f"Error processing block #{block_number}: {e}")
 
     async def _store_block(self, block_number: int) -> Block | None:
         """Fetch and store full block data from RPC.
@@ -336,7 +345,7 @@ class LiveProcessor:
             return block
 
         except Exception as e:
-            logger.error(f"Failed to store block #{block_number}: {e}")
+            logger.exception(f"Failed to store block #{block_number}: {e}")
             return None
 
     async def _store_builder_balance(
@@ -410,7 +419,7 @@ class LiveProcessor:
             }
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to store builder balance for block #{block_number}: {e}"
             )
             return None
@@ -563,15 +572,13 @@ class LiveProcessor:
                             await session.commit()
 
                         # Track this relay data for analysis
-                        relay_data_list.append(
-                            {
-                                "relay": relay,
-                                "value": int(payload_data.get("value", 0)),
-                            }
-                        )
+                        relay_data_list.append({
+                            "relay": relay,
+                            "value": int(payload_data.get("value", 0)),
+                        })
 
                     except Exception as e:
-                        logger.error(
+                        logger.exception(
                             f"Failed to store relay payload from {relay} "
                             f"for block #{block_number}: {e}"
                         )
@@ -583,7 +590,7 @@ class LiveProcessor:
             return relay_data_list
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to fetch relay payloads for block #{block_number}: {e}"
             )
             return []
@@ -673,12 +680,10 @@ class LiveProcessor:
                     primary_key_value=(block_number, builder_address),
                 )
 
-                balance_data.append(
-                    {
-                        "builder_address": builder_address,
-                        "balance_increase": balance_increase,
-                    }
-                )
+                balance_data.append({
+                    "builder_address": builder_address,
+                    "balance_increase": balance_increase,
+                })
 
             logger.info(
                 f"Stored {len(balance_data)} extra builder balances for block #{block_number}"
@@ -686,7 +691,7 @@ class LiveProcessor:
             return balance_data
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to fetch/store extra builder balances for block #{block_number}: {e}"
             )
             return []
@@ -722,7 +727,7 @@ class LiveProcessor:
 
             # API returns {"data": [...]}
             adjustment_data = None
-            if "data" in data and data["data"]:
+            if data.get("data"):
                 adjustment_data = data["data"][0]
 
             # Create adjustment record
@@ -777,7 +782,7 @@ class LiveProcessor:
             logger.debug(f"HTTP error fetching adjustment for slot {slot}: {e}")
             return None
         except Exception as e:
-            logger.error(f"Error fetching adjustment for slot {slot}: {e}")
+            logger.exception(f"Error fetching adjustment for slot {slot}: {e}")
             return None
 
     async def _store_analysis_simple(
@@ -886,7 +891,7 @@ class LiveProcessor:
             )
 
         except Exception as e:
-            logger.error(f"Failed to store analysis for block #{block_number}: {e}")
+            logger.exception(f"Failed to store analysis for block #{block_number}: {e}")
 
     def shutdown(self) -> None:
         """Gracefully shutdown the processor."""
@@ -931,7 +936,7 @@ async def main() -> None:
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt, exiting...")
     except Exception as e:
-        logger.error(f"Fatal error: {e}")
+        logger.exception(f"Fatal error: {e}")
         sys.exit(1)
 
 

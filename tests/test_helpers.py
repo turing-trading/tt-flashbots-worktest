@@ -8,7 +8,7 @@ from src.helpers.parsers import parse_hex_int, parse_hex_timestamp, wei_to_eth
 class TestParsers:
     """Test parsing utility functions."""
 
-    def test_parse_hex_int_valid(self):
+    def test_parse_hex_int_valid(self) -> None:
         """Test parsing valid hex integers."""
         assert parse_hex_int("0x10") == 16
         assert parse_hex_int("0x0") == 0
@@ -16,17 +16,17 @@ class TestParsers:
         assert parse_hex_int("0xFF") == 255
         assert parse_hex_int("0x1234abcd") == 305441741
 
-    def test_parse_hex_int_none(self):
+    def test_parse_hex_int_none(self) -> None:
         """Test parsing None returns default value."""
         assert parse_hex_int(None) == 0
         assert parse_hex_int(None, default=42) == 42
 
-    def test_parse_hex_int_empty_string(self):
+    def test_parse_hex_int_empty_string(self) -> None:
         """Test parsing empty string raises ValueError."""
         with pytest.raises(ValueError):
             parse_hex_int("")
 
-    def test_parse_hex_timestamp_valid(self):
+    def test_parse_hex_timestamp_valid(self) -> None:
         """Test parsing valid hex timestamps."""
         from datetime import datetime
 
@@ -41,7 +41,7 @@ class TestParsers:
         assert result.month == 1
         assert result.day == 1
 
-    def test_wei_to_eth_valid(self):
+    def test_wei_to_eth_valid(self) -> None:
         """Test Wei to ETH conversion."""
         # 1 ETH = 10^18 Wei
         assert wei_to_eth(1_000_000_000_000_000_000) == 1.0
@@ -49,7 +49,7 @@ class TestParsers:
         assert wei_to_eth(0) == 0.0
         assert wei_to_eth(1) == 1e-18
 
-    def test_wei_to_eth_none(self):
+    def test_wei_to_eth_none(self) -> None:
         """Test None returns None."""
         assert wei_to_eth(None) is None
 
@@ -57,7 +57,7 @@ class TestParsers:
 class TestConstants:
     """Test application constants."""
 
-    def test_builder_name_cleaning(self):
+    def test_builder_name_cleaning(self) -> None:
         """Test builder name cleaning logic."""
         from src.analysis.builder_name import clean_builder_name
 
@@ -71,7 +71,7 @@ class TestConstants:
         # Test passthrough for normal names
         assert clean_builder_name("flashbots") == "flashbots"
 
-    def test_relay_constants_exist(self):
+    def test_relay_constants_exist(self) -> None:
         """Test that relay constants are defined."""
         from src.data.relays.constants import RELAYS
 
@@ -83,11 +83,11 @@ class TestConstants:
 class TestBuilderNameParsing:
     """Test builder name parsing from extra_data."""
 
-    def test_parse_builder_name_from_extra_data_all_cases(self):
+    def test_parse_builder_name_from_extra_data_all_cases(self) -> None:
         """Test parsing builder names from all extra_data test cases."""
         from src.analysis.builder_name import parse_builder_name_from_extra_data
 
-        # Comprehensive test cases covering all extra_data patterns from extra_data_test.txt
+        # Comprehensive test cases covering all extra_data patterns
         test_cases = [
             # Known builders with clear identifiers
             ("0x546974616e2028746974616e6275696c6465722e78797a29", "Titan"),
@@ -163,13 +163,13 @@ class TestBuilderNameParsing:
                 f"Failed for {extra_data}: expected '{expected}', got '{result}'"
             )
 
-    def test_parse_builder_name_none_input(self):
+    def test_parse_builder_name_none_input(self) -> None:
         """Test parsing with None input returns 'unknown'."""
         from src.analysis.builder_name import parse_builder_name_from_extra_data
 
         assert parse_builder_name_from_extra_data(None) == "unknown"
 
-    def test_parse_builder_name_invalid_hex(self):
+    def test_parse_builder_name_invalid_hex(self) -> None:
         """Test parsing with invalid hex returns 'unknown'."""
         from src.analysis.builder_name import parse_builder_name_from_extra_data
 
@@ -179,7 +179,7 @@ class TestBuilderNameParsing:
         # Odd-length hex string (invalid)
         assert parse_builder_name_from_extra_data("0x123") == "unknown"
 
-    def test_parse_builder_name_builder_mapping(self):
+    def test_parse_builder_name_builder_mapping(self) -> None:
         """Test that builder name mapping is applied correctly."""
         from src.analysis.builder_name import parse_builder_name_from_extra_data
 
@@ -209,7 +209,7 @@ class TestBuilderNameParsing:
             == "Bob The Builder"
         )
 
-    def test_parse_builder_name_emoji_handling(self):
+    def test_parse_builder_name_emoji_handling(self) -> None:
         """Test that emojis are properly stripped from builder names."""
         from src.analysis.builder_name import parse_builder_name_from_extra_data
 
@@ -221,7 +221,7 @@ class TestBuilderNameParsing:
             == "Quasar"
         )
 
-    def test_parse_builder_name_version_removal(self):
+    def test_parse_builder_name_version_removal(self) -> None:
         """Test that version numbers are properly removed."""
         from src.analysis.builder_name import parse_builder_name_from_extra_data
 
@@ -236,5 +236,6 @@ class TestBuilderNameParsing:
         for version_hex in nethermind_versions:
             result = parse_builder_name_from_extra_data(version_hex)
             assert result == "BuilderNet (Nethermind)", (
-                f"Failed for {version_hex}: expected 'BuilderNet (Nethermind)', got '{result}'"
+                f"Failed for {version_hex}: expected 'BuilderNet (Nethermind)', "
+                f"got '{result}'"
             )

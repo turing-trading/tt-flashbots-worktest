@@ -1,7 +1,13 @@
 """Backfill PBS analysis data V3 with slot, extra transfers, and relay fees."""
 
-from asyncio import run
 from datetime import datetime, timedelta
+
+from typing import TYPE_CHECKING
+
+from asyncio import run
+
+from sqlalchemy import case, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from rich.console import Console
 from rich.progress import (
@@ -14,9 +20,6 @@ from rich.progress import (
     TimeElapsedColumn,
     TimeRemainingColumn,
 )
-from sqlalchemy import case, func, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.analysis.builder_name import parse_builder_name_from_extra_data
 from src.analysis.db import AnalysisPBSV3DB
@@ -28,6 +31,11 @@ from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
 from src.helpers.parsers import wei_to_eth
 
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+
 # Default to process last year of data
 START_DATE = datetime.now() - timedelta(days=1)
 # 2024-01-01
@@ -38,7 +46,7 @@ END_DATE = datetime.now() - timedelta(minutes=10)
 class BackfillAnalysisPBSV3:
     """Backfill PBS analysis data V3 with slot, extra transfers, and relay fees."""
 
-    def __init__(self, batch_size: int = 10_000):
+    def __init__(self, batch_size: int = 10_000) -> None:
         """Initialize backfill.
 
         Args:
@@ -200,7 +208,7 @@ class BackfillAnalysisPBSV3:
         for row in rows:
             # Filter out None values from relays array
             relays = [r for r in (row.relays or []) if r is not None]
-            relays_list = relays if relays else None
+            relays_list = relays or None
 
             # Calculate computed fields
             n_relays = len(relays) if relays else 0
@@ -226,22 +234,20 @@ class BackfillAnalysisPBSV3:
             if total_value < 0 and builder_extra_transfers > 0:
                 total_value += builder_extra_transfers
 
-            aggregated_data.append(
-                {
-                    "block_number": row.block_number,
-                    "block_timestamp": row.block_timestamp,
-                    "builder_balance_increase": builder_balance_increase,
-                    "proposer_subsidy": proposer_subsidy,
-                    "total_value": total_value,
-                    "is_block_vanilla": is_block_vanilla,
-                    "n_relays": n_relays,
-                    "relays": relays_list,
-                    "builder_name": builder_name,
-                    "slot": slot,
-                    "builder_extra_transfers": builder_extra_transfers,
-                    "relay_fee": relay_fee,
-                }
-            )
+            aggregated_data.append({
+                "block_number": row.block_number,
+                "block_timestamp": row.block_timestamp,
+                "builder_balance_increase": builder_balance_increase,
+                "proposer_subsidy": proposer_subsidy,
+                "total_value": total_value,
+                "is_block_vanilla": is_block_vanilla,
+                "n_relays": n_relays,
+                "relays": relays_list,
+                "builder_name": builder_name,
+                "slot": slot,
+                "builder_extra_transfers": builder_extra_transfers,
+                "relay_fee": relay_fee,
+            })
 
         return aggregated_data
 

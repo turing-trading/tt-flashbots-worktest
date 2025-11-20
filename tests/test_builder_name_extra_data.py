@@ -8,6 +8,7 @@ import pytest
 
 from src.analysis.builder_name import parse_builder_name_from_extra_data
 
+
 # All 300 test cases from extra_data_test.txt
 # Format: (hex_extra_data, expected_builder_name)
 TEST_CASES = [
@@ -38,7 +39,10 @@ TEST_CASES = [
     ("0x4e65746865726d696e642076312e33322e34", "BuilderNet (Nethermind)"),
     ("0xd883011003846765746888676f312e32352e30856c696e7578", "unknown"),
     ("0xd883010e05846765746888676f312e32322e34856c696e7578", "unknown"),
-    ("0x68747470733a2f2f626c6f636b6265656c6465722e636f6d20f09f909d", "blockbeelder.com"),
+    (
+        "0x68747470733a2f2f626c6f636b6265656c6465722e636f6d20f09f909d",
+        "blockbeelder.com",
+    ),
     ("0xd883010f0b846765746888676f312e32332e39856c696e7578", "unknown"),
     ("0xd983010e0d846765746889676f312e32322e3131856c696e7578", "unknown"),
     ("0xd883010f02846765746888676f312e32332e36856c696e7578", "unknown"),
@@ -101,7 +105,10 @@ TEST_CASES = [
     ("0xd883011002846765746888676f312e32342e36856c696e7578", "unknown"),
     ("0x626573752032352e382d646576656c6f702d63366332613963", "besu-develop-c"),
     ("0x627920406275696c64657230783639", "0x69"),
-    ("0x496c6c756d696e61746520446d6f6372747a20447374726962205072746374", "Illuminate Dmocrtz Dstrib Prtct"),
+    (
+        "0x496c6c756d696e61746520446d6f6372747a20447374726962205072746374",
+        "Illuminate Dmocrtz Dstrib Prtct",
+    ),
     ("0x657269676f6e2d332e302e31352d3161363130623366", "erigon-3.0.15-"),
     ("0x626573752032352e392d646576656c6f702d65383836306432", "besu"),
     ("0x736e61696c6275696c6465722e7368", "Snail"),
@@ -119,7 +126,10 @@ TEST_CASES = [
     ("0x626573752032352e31302d646576656c6f702d37633362633932", "besu"),
     ("0xd883010e06846765746888676f312e32322e34856c696e7578", "unknown"),
     ("0x4e65746865726d696e642076312e33332e30", "BuilderNet (Nethermind)"),
-    ("0x496c6c756d696e61746520446d6f63726174697a6520447374726962757465", "Illuminate Dmocratize Dstribute"),
+    (
+        "0x496c6c756d696e61746520446d6f63726174697a6520447374726962757465",
+        "Illuminate Dmocratize Dstribute",
+    ),
     ("0x4e65746865726d696e642076312e33332e3061", "Netherminda"),
     ("0xd983010f0b846765746888676f312e32342e328664617277696e", "unknown"),
     ("0xd883010e0d846765746888676f312e32322e30856c696e7578", "unknown"),
@@ -317,14 +327,14 @@ TEST_CASES = [
 class TestBuilderNameFromExtraData:
     """Test parsing builder names from all extra_data entries."""
 
-    @pytest.mark.parametrize("extra_data,expected", TEST_CASES)
-    def test_parse_all_extra_data(self, extra_data: str, expected: str):
+    @pytest.mark.parametrize(("extra_data", "expected"), TEST_CASES)
+    def test_parse_all_extra_data(self, extra_data: str, expected: str) -> None:
         """Test parsing each extra_data entry returns expected builder name."""
         result = parse_builder_name_from_extra_data(extra_data)
         assert result == expected, (
             f"Failed for {extra_data}: expected '{expected}', got '{result}'"
         )
 
-    def test_all_300_cases_present(self):
+    def test_all_300_cases_present(self) -> None:
         """Verify we have all 300 test cases."""
         assert len(TEST_CASES) == 300, f"Expected 300 test cases, got {len(TEST_CASES)}"

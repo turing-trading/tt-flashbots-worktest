@@ -1,9 +1,11 @@
 """Logger module."""
 
-import logging
 import sys
 
+import logging
+
 import colorlog
+
 
 loggers: dict[str, logging.Logger] = {}
 

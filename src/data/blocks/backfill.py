@@ -1,14 +1,21 @@
 """Backfill Ethereum block data from AWS Public Blockchain Dataset."""
 
-import asyncio
+from datetime import datetime, timedelta
 import io
 import os
-from asyncio import run
-from datetime import datetime, timedelta
 
-import httpx
+from typing import TYPE_CHECKING
+
+import asyncio
+from asyncio import run
+
+from sqlalchemy import func, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
 import pandas as pd
+
 from dotenv import load_dotenv
+import httpx
 from rich.console import Console
 from rich.progress import (
     BarColumn,
@@ -19,15 +26,17 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
 )
-from sqlalchemy import func, select, text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.blocks.db import BlockCheckpoints, BlockDB
 from src.data.blocks.models import Block
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
 from src.helpers.parsers import parse_hex_int, parse_hex_timestamp, wei_to_eth
+
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 
 load_dotenv()
 
@@ -43,7 +52,7 @@ class BackfillBlocks:
         eth_rpc_url: str | None = None,
         rpc_batch_size: int = 50,
         parallel_batches: int = 30,
-    ):
+    ) -> None:
         """Initialize backfill.
 
         Args:
@@ -76,8 +85,7 @@ class BackfillBlocks:
         """
         stmt = select(BlockCheckpoints.date)
         result = await session.execute(stmt)
-        completed_dates = {row[0] for row in result.fetchall()}
-        return completed_dates
+        return {row[0] for row in result.fetchall()}
 
     async def _add_checkpoint(
         self, session: AsyncSession, date: str, block_count: int
@@ -153,10 +161,10 @@ class BackfillBlocks:
             if e.response.status_code == 404:
                 self.logger.warning(f"No data available for date {date}")
             else:
-                self.logger.error(f"HTTP {e.response.status_code} for date {date}: {e}")
+                self.logger.exception(f"HTTP {e.response.status_code} for date {date}: {e}")
             return None
         except Exception as e:
-            self.logger.error(f"Error fetching data for date {date}: {e}")
+            self.logger.exception(f"Error fetching data for date {date}: {e}")
             return None
 
     def _dataframe_to_blocks(self, df: pd.DataFrame) -> list[Block]:
@@ -180,7 +188,7 @@ class BackfillBlocks:
                     if pd.isna(base_fee_val)  # type: ignore[arg-type]
                     else float(base_fee_val)
                 )
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 base_fee_per_gas = None
 
             block = Block(
@@ -248,7 +256,8 @@ class BackfillBlocks:
             Latest block number
         """
         if not self.eth_rpc_url:
-            raise ValueError("ETH_RPC_URL must be configured to fetch missing blocks")
+            msg = "ETH_RPC_URL must be configured to fetch missing blocks"
+            raise ValueError(msg)
 
         payload = {
             "jsonrpc": "2.0",
@@ -303,8 +312,7 @@ class BackfillBlocks:
         """
 
         result = await session.execute(text(query_str))
-        missing = [row[0] for row in result.fetchall()]
-        return missing
+        return [row[0] for row in result.fetchall()]
 
     async def _fetch_block_via_rpc(
         self, client: httpx.AsyncClient, block_number: int
@@ -319,7 +327,8 @@ class BackfillBlocks:
             Block model or None if failed
         """
         if not self.eth_rpc_url:
-            raise ValueError("ETH_RPC_URL must be configured")
+            msg = "ETH_RPC_URL must be configured"
+            raise ValueError(msg)
 
         payload = {
             "jsonrpc": "2.0",
@@ -366,7 +375,7 @@ class BackfillBlocks:
             )
 
         except Exception as e:
-            self.logger.error(f"Error fetching block {block_number} via RPC: {e}")
+            self.logger.exception(f"Error fetching block {block_number} via RPC: {e}")
             return None
 
     async def _batch_fetch_blocks(
@@ -384,22 +393,21 @@ class BackfillBlocks:
             Dict mapping block_number to Block model
         """
         if not self.eth_rpc_url:
-            raise ValueError("ETH_RPC_URL must be configured")
+            msg = "ETH_RPC_URL must be configured"
+            raise ValueError(msg)
 
         # Build batch JSON-RPC request
         batch_payload = []
         for idx, block_number in enumerate(block_numbers):
-            batch_payload.append(
-                {
-                    "jsonrpc": "2.0",
-                    "method": "eth_getBlockByNumber",
-                    "params": [
-                        hex(block_number),
-                        False,
-                    ],  # False = don't include transactions
-                    "id": idx,
-                }
-            )
+            batch_payload.append({
+                "jsonrpc": "2.0",
+                "method": "eth_getBlockByNumber",
+                "params": [
+                    hex(block_number),
+                    False,
+                ],  # False = don't include transactions
+                "id": idx,
+            })
 
         try:
             self.logger.debug(
@@ -456,13 +464,13 @@ class BackfillBlocks:
                     block_map[block_number] = block
 
                 except Exception as e:
-                    self.logger.error(f"Error parsing block {block_number}: {e}")
+                    self.logger.exception(f"Error parsing block {block_number}: {e}")
                     continue
 
             return block_map
 
         except Exception as e:
-            self.logger.error(f"Error in batch block request: {e}")
+            self.logger.exception(f"Error in batch block request: {e}")
             # Return empty dict on error
             return {}
 
@@ -503,9 +511,9 @@ class BackfillBlocks:
             parallel_chunk = batches[i : i + self.parallel_batches]
 
             # Execute multiple batch requests in parallel
-            results = await asyncio.gather(
-                *[self._batch_fetch_blocks(client, batch) for batch in parallel_chunk]
-            )
+            results = await asyncio.gather(*[
+                self._batch_fetch_blocks(client, batch) for batch in parallel_chunk
+            ])
 
             # Merge results and store
             for block_map in results:
@@ -739,7 +747,7 @@ if __name__ == "__main__":
     )
 
     # Run both backfills
-    async def main():
+    async def main() -> None:
         # First, backfill from AWS S3 (historical data by date)
         await backfill.run()
 
