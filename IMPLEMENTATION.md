@@ -57,7 +57,6 @@ A comprehensive **Ethereum MEV-Boost data pipeline** that collects, processes, a
   - Cursor-based pagination
   - Per-relay rate limiting
   - Retry logic with exponential backoff
-  - Gap detection and recovery
   - Missed MEV statistical detection
 
 #### Adjustments Module (`src/data/adjustments/`)

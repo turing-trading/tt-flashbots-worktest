@@ -36,8 +36,8 @@ from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
 
 
-class BackfillProposerPayloadDelivered:
-    """Backfill proposer payload delivered data."""
+class BackfillRelayPayloadDelivered:
+    """Backfill relay payload delivered data."""
 
     def __init__(self):
         """Initialize backfill with relay and endpoint."""
@@ -181,8 +181,8 @@ class BackfillProposerPayloadDelivered:
                 RelaysPayloadsDB.parent_hash: excluded.parent_hash,
                 RelaysPayloadsDB.block_hash: excluded.block_hash,
                 RelaysPayloadsDB.builder_pubkey: excluded.builder_pubkey,
-                RelaysPayloadsDB.proposer_pubkey: excluded.proposer_pubkey,
-                RelaysPayloadsDB.proposer_fee_recipient: excluded.proposer_fee_recipient,
+                RelaysPayloadsDB.builder_pubkey: excluded.builder_pubkey,
+                RelaysPayloadsDB.builder_fee_recipient: excluded.builder_fee_recipient,
                 RelaysPayloadsDB.gas_limit: excluded.gas_limit,
                 RelaysPayloadsDB.gas_used: excluded.gas_used,
                 RelaysPayloadsDB.value: excluded.value,
@@ -298,7 +298,7 @@ class BackfillProposerPayloadDelivered:
         target_end_slot: int = 0,
         ignore_checkpoints: bool = False,
     ) -> None:
-        """Backfill proposer payload delivered data.
+        """Backfill builder payload delivered data.
 
         Two-phase backfill strategy:
         1. Phase 1: Always fetch latest_slot -> to_slot (new data since last run)
@@ -466,5 +466,5 @@ if __name__ == "__main__":
     start_slot = int(sys.argv[1]) if len(sys.argv) > 1 else None
     end_slot = int(sys.argv[2]) if len(sys.argv) > 2 else None
 
-    backfill = BackfillProposerPayloadDelivered()
+    backfill = BackfillRelayPayloadDelivered()
     run(backfill.run(start_slot=start_slot, end_slot=end_slot))

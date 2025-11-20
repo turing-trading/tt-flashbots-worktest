@@ -1,4 +1,4 @@
-"""Backfill proposer balance data using Ethereum JSON-RPC."""
+"""Backfill builder balance data using Ethereum JSON-RPC."""
 
 import asyncio
 import os
@@ -21,16 +21,16 @@ from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.data.proposers.db import ProposerBalancesDB
-from src.data.proposers.models import ProposerBalance
+from src.data.builders.db import BuilderBalancesDB
+from src.data.builders.models import BuilderBalance
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
 
 load_dotenv()
 
 
-class BackfillProposerBalancesDelivered:
-    """Backfill proposer balance increases by querying Ethereum node."""
+class BackfillBuilderBalancesDelivered:
+    """Backfill builder balance increases by querying Ethereum node."""
 
     def __init__(
         self,
@@ -56,19 +56,19 @@ class BackfillProposerBalancesDelivered:
         self.batch_size = batch_size
         self.db_batch_size = db_batch_size
         self.parallel_batches = parallel_batches
-        self.logger = get_logger("backfill_proposer_balances", log_level="INFO")
+        self.logger = get_logger("backfill_builder_balances", log_level="INFO")
         self.console = Console()
 
     async def _get_missing_blocks_count(self, session: AsyncSession) -> int:
         """Get total count of missing blocks.
 
         Returns:
-            Total number of blocks missing from proposers_balance table
+            Total number of blocks missing from builders_balance table
         """
         query_str = """
         SELECT COUNT(*)
         FROM blocks b
-        LEFT JOIN proposers_balance mb ON b.number = mb.block_number
+        LEFT JOIN builders_balance mb ON b.number = mb.block_number
         WHERE mb.block_number IS NULL
         AND b.number > 0
         """
@@ -80,20 +80,20 @@ class BackfillProposerBalancesDelivered:
     async def _get_missing_block_numbers(
         self, session: AsyncSession, limit: int | None = None
     ) -> list[tuple[int, str]]:
-        """Get block numbers that exist in blocks but not in proposers_balance.
+        """Get block numbers that exist in blocks but not in builders_balance.
 
         Args:
             limit: Max blocks to fetch (capped at 10,000 to minimize DB impact)
 
         Returns:
-            List of (block_number, proposer) tuples
+            List of (block_number, builder) tuples
         """
-        # Query blocks that don't have corresponding proposer balance records
+        # Query blocks that don't have corresponding builder balance records
         # Order by DESC to process most recent blocks first
         query_str = """
         SELECT b.number, b.miner
         FROM blocks b
-        LEFT JOIN proposers_balance mb ON b.number = mb.block_number
+        LEFT JOIN builders_balance mb ON b.number = mb.block_number
         WHERE mb.block_number IS NULL
         AND b.number > 0
         ORDER BY b.number DESC
@@ -188,7 +188,7 @@ class BackfillProposerBalancesDelivered:
         progress: Progress,
         task_id: TaskID,
     ) -> int:
-        """Process a batch of blocks to calculate proposer balance increases.
+        """Process a batch of blocks to calculate builder balance increases.
 
         Args:
             client: HTTP client
@@ -206,9 +206,9 @@ class BackfillProposerBalancesDelivered:
         # Build requests for all balances we need
         # For each block N, we need balance at N-1 and N
         balance_requests = []
-        for block_number, proposer in blocks:
-            balance_requests.append((proposer, block_number - 1))  # Balance before
-            balance_requests.append((proposer, block_number))  # Balance after
+        for block_number, builder in blocks:
+            balance_requests.append((builder, block_number - 1))  # Balance before
+            balance_requests.append((builder, block_number))  # Balance after
 
         # Process balance requests in parallel batches
         all_balances = {}
@@ -232,48 +232,48 @@ class BackfillProposerBalancesDelivered:
             for balances in results:
                 all_balances.update(balances)
 
-        # Create ProposerBalance records
-        proposer_balances = []
-        for block_number, proposer in blocks:
-            balance_before = all_balances.get((proposer, block_number - 1), 0)
-            balance_after = all_balances.get((proposer, block_number), 0)
+        # Create BuilderBalance records
+        builder_balances = []
+        for block_number, builder in blocks:
+            balance_before = all_balances.get((builder, block_number - 1), 0)
+            balance_after = all_balances.get((builder, block_number), 0)
             balance_increase = balance_after - balance_before
 
-            proposer_balance = ProposerBalance(
+            builder_balance = BuilderBalance(
                 block_number=block_number,
-                miner=proposer,
+                miner=builder,
                 balance_before=balance_before,
                 balance_after=balance_after,
                 balance_increase=balance_increase,
             )
-            proposer_balances.append(proposer_balance)
+            builder_balances.append(builder_balance)
 
         # Store in database
-        await self._store_proposer_balances(session, proposer_balances)
+        await self._store_builder_balances(session, builder_balances)
 
         # Update progress
         progress.update(task_id, advance=len(blocks))
 
         return len(blocks)
 
-    async def _store_proposer_balances(
-        self, session: AsyncSession, balances: list[ProposerBalance]
+    async def _store_builder_balances(
+        self, session: AsyncSession, balances: list[BuilderBalance]
     ) -> None:
-        """Store proposer balances in the database."""
+        """Store builder balances in the database."""
         if not balances:
             return
 
         values = [balance.model_dump() for balance in balances]
 
         # Upsert using ON CONFLICT
-        stmt = pg_insert(ProposerBalancesDB).values(values)
+        stmt = pg_insert(BuilderBalancesDB).values(values)
         stmt = stmt.on_conflict_do_update(
             index_elements=["block_number"],
             set_={
-                ProposerBalancesDB.miner: stmt.excluded.miner,
-                ProposerBalancesDB.balance_before: stmt.excluded.balance_before,
-                ProposerBalancesDB.balance_after: stmt.excluded.balance_after,
-                ProposerBalancesDB.balance_increase: stmt.excluded.balance_increase,
+                BuilderBalancesDB.miner: stmt.excluded.miner,
+                BuilderBalancesDB.balance_before: stmt.excluded.balance_before,
+                BuilderBalancesDB.balance_after: stmt.excluded.balance_after,
+                BuilderBalancesDB.balance_increase: stmt.excluded.balance_increase,
             },
         )
 
@@ -299,7 +299,7 @@ class BackfillProposerBalancesDelivered:
         await self.create_tables()
 
         self.console.print(
-            "[bold blue]Backfilling proposer balance increases[/bold blue]"
+            "[bold blue]Backfilling builder balance increases[/bold blue]"
         )
         self.console.print(f"[cyan]Ethereum RPC: {self.eth_rpc_url}[/cyan]")
         self.console.print(
@@ -380,7 +380,7 @@ class BackfillProposerBalancesDelivered:
 
 if __name__ == "__main__":
     # Example: Backfill all missing blocks
-    backfill = BackfillProposerBalancesDelivered(
+    backfill = BackfillBuilderBalancesDelivered(
         batch_size=10,  # 10 balance queries per JSON-RPC batch
         db_batch_size=100,  # 100 records per DB insert
         parallel_batches=100,  # 100 batch requests in parallel

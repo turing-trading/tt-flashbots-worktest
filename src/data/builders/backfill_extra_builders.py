@@ -21,9 +21,9 @@ from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.data.proposers.db import ExtraBuilderBalanceDB
-from src.data.proposers.known_builder_addresses import KNOWN_BUILDER_ADDRESSES
-from src.data.proposers.models import ExtraBuilderBalance
+from src.data.builders.db import ExtraBuilderBalanceDB
+from src.data.builders.known_builder_addresses import KNOWN_BUILDER_ADDRESSES
+from src.data.builders.models import ExtraBuilderBalance
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
 
@@ -271,7 +271,9 @@ class BackfillExtraBuilderBalances:
         for block_number, miner in blocks:
             builder_addresses = KNOWN_BUILDER_ADDRESSES.get(miner, [])
             for builder_address in builder_addresses:
-                balance_before = all_balances.get((builder_address, block_number - 1), 0)
+                balance_before = all_balances.get(
+                    (builder_address, block_number - 1), 0
+                )
                 balance_after = all_balances.get((builder_address, block_number), 0)
                 balance_increase = balance_after - balance_before
 

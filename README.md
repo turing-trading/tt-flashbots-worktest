@@ -37,11 +37,6 @@ src/
 │   ├── backfill.py            # Historical PBS data aggregation
 │   ├── live.py                # Live PBS data aggregation
 │   ├── constants.py           # Builder name normalization
-│   └── queries/               # Grafana SQL queries
-│       ├── builder_market_share.sql
-│       ├── builder_profit.sql
-│       ├── proposer_vs_builder_profit.sql
-│       └── ...
 ├── data/
 │   ├── blocks/                # Block header collection
 │   │   ├── backfill.py        # Historical block fetching
