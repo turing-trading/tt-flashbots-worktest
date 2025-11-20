@@ -2,7 +2,7 @@
 
 import pytest
 import httpx
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 from src.helpers.rpc import RPCClient
 
@@ -186,3 +186,49 @@ class TestRPCClient:
         assert balance_before == 1000000000000000000
         assert balance_after == 2000000000000000000
         assert increase == 1000000000000000000
+
+    @pytest.mark.asyncio
+    async def test_get_balances_batch_with_null_result(self) -> None:
+        """Test batch_get_balances handles null/None results."""
+        client = RPCClient("https://rpc.example.com")
+
+        mock_http_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_response = MagicMock()
+        mock_response.json.return_value = [
+            {"id": 0, "result": "0x1"},  # Valid result
+            {"id": 1, "result": None},   # Null result
+            {"id": 2, "result": ""},     # Empty result
+        ]
+        mock_http_client.post.return_value = mock_response
+
+        requests = [
+            ("0xaddr1", 100),
+            ("0xaddr2", 100),
+            ("0xaddr3", 100),
+        ]
+        balance_map = await client.batch_get_balances(mock_http_client, requests)
+
+        # Valid result should be parsed
+        assert balance_map[("0xaddr1", 100)] == 1
+        # Null and empty results should default to 0
+        assert balance_map[("0xaddr2", 100)] == 0
+        assert balance_map[("0xaddr3", 100)] == 0
+
+    @pytest.mark.asyncio
+    async def test_get_balances_batch_exception_returns_zeros(self) -> None:
+        """Test batch_get_balances returns zeros on exception."""
+        client = RPCClient("https://rpc.example.com")
+
+        mock_http_client = AsyncMock(spec=httpx.AsyncClient)
+        # Simulate an exception during the request
+        mock_http_client.post.side_effect = Exception("Network error")
+
+        requests = [
+            ("0xaddr1", 100),
+            ("0xaddr2", 200),
+        ]
+        balance_map = await client.batch_get_balances(mock_http_client, requests)
+
+        # All requests should have zero balance on error
+        assert balance_map[("0xaddr1", 100)] == 0
+        assert balance_map[("0xaddr2", 200)] == 0
