@@ -24,6 +24,7 @@ def clean_env() -> "Generator[None, None, None]":
     # Save current env
     saved_env = {
         "TEST_KEY": os.environ.get("TEST_KEY"),
+        "TEST_URL": os.environ.get("TEST_URL"),
         "ETH_RPC_URL": os.environ.get("ETH_RPC_URL"),
         "ETH_WS_URL": os.environ.get("ETH_WS_URL"),
     }
@@ -104,7 +105,6 @@ class TestGetRequiredUrl:
         url = "https://from-param.com"
         assert get_required_url("TEST_URL", url=url) == url
 
-    @pytest.mark.xfail(reason="Flaky test - env isolation issues")
     def test_raises_when_url_not_provided_and_env_not_set(self, clean_env: None) -> None:
         """Test that get_required_url raises when no URL and no env var."""
         with pytest.raises(
@@ -112,7 +112,6 @@ class TestGetRequiredUrl:
         ):
             get_required_url("TEST_URL")
 
-    @pytest.mark.xfail(reason="Flaky test - env isolation issues")
     def test_custom_description_in_error(self, clean_env: None) -> None:
         """Test that custom description appears in error message."""
         with pytest.raises(
