@@ -10,6 +10,9 @@
 -- This query calculates the percentage of blocks delivered by each relay
 -- by unnesting the relays array and counting occurrences.
 --
+-- Note: When a builder submits the same block to multiple relays, that block
+-- will be counted once for each relay, so the total may exceed 100%.
+--
 -- Variables:
 -- - $__timeFilter(block_timestamp): Grafana time range filter
 --

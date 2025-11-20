@@ -7,9 +7,13 @@
 -- Shows the percentage of total value that goes to proposers vs builders, grouped by builder
 --
 -- This query aggregates by builder_name:
--- - Proposer profit: Sum of proposer_subsidy (payment from builder to proposer)
--- - Builder profit: Sum of builder_balance_increase (onchain balance increase)
+-- - Proposer profit: proposer_subsidy (payment from builder to proposer)
+-- - Builder profit: total_value - proposer_subsidy - relay_fee
 -- - Proposer profit %: Percentage of total value that goes to proposers
+--
+-- The total_value field already includes the correct logic for builder_extra_transfers:
+-- - builder_extra_transfers are only included when total_value would otherwise be negative
+-- - This represents refunds/adjustments from known builder addresses (e.g., BuilderNet)
 --
 -- Only counts MEV-Boost blocks (where relays is not NULL).
 -- Vanilla blocks (self-built by proposers) are excluded.
@@ -48,7 +52,7 @@ SELECT
         2
     ) as proposer_profit_pct
     --ROUND(SUM(apv.proposer_subsidy)::numeric, 4) as total_proposer_profit_eth,
-    --ROUND(SUM(apv.builder_balance_increase)::numeric, 4) as total_builder_profit_eth,
+    --ROUND(SUM(apv.total_value - apv.proposer_subsidy - COALESCE(apv.relay_fee, 0))::numeric, 4) as total_builder_profit_eth,
     --ROUND(SUM(apv.total_value)::numeric, 4) as total_value_eth,
     --COUNT(*) as block_count
 FROM analysis_pbs_v3 apv
