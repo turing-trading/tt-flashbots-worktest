@@ -7,7 +7,7 @@ A comprehensive data pipeline for collecting, processing, and analyzing Ethereum
 This pipeline provides real-time and historical data collection for analyzing the MEV-Boost ecosystem:
 
 - **Live streaming** of Ethereum block headers via WebSocket
-- **Historical backfilling** of blocks, proposer balances, relay payloads, and builder identifiers
+- **Historical backfilling** of blocks, builder balances, relay payloads, and builder identifiers
 - **PBS analysis** aggregating data across all sources
 - **Grafana-ready SQL queries** for market share, profit analysis, and more
 - **Production deployment** with Docker and Kubernetes
@@ -17,15 +17,14 @@ This pipeline provides real-time and historical data collection for analyzing th
 ### Data Flow
 
 ```
-Ethereum Node (WebSocket) → Live Stream → Processing Queues
-                                              ├─> Blocks DB
-                                              ├─> Proposer Balances DB
-                                              ├─> Relay Payloads DB
-                                              └─> Builder Identifiers DB
-                                                        ↓
-                                              PBS Analysis Aggregation
-                                                        ↓
-                                              Grafana Dashboards
+Ethereum Node (WebSocket) → Live Stream
+                                ├─> Blocks DB
+                                ├─> Builder Balances DB
+                                └─> Relay Payloads DB
+                                        ↓
+                                PBS Analysis Aggregation
+                                        ↓
+                                Grafana Dashboards
 ```
 
 ### Module Structure
@@ -34,26 +33,12 @@ Ethereum Node (WebSocket) → Live Stream → Processing Queues
 src/
 ├── live.py                    # WebSocket coordinator for live streaming
 ├── analysis/                  # PBS analysis and aggregation
-│   ├── backfill.py            # Historical PBS data aggregation
-│   ├── live.py                # Live PBS data aggregation
-│   ├── constants.py           # Builder name normalization
 ├── data/
 │   ├── blocks/                # Block header collection
-│   │   ├── backfill.py        # Historical block fetching
-│   │   └── live.py            # Live block streaming
 │   ├── builders/              # Builder balance tracking
-│   │   ├── backfill.py        # Historical balance calculation
-│   │   └── live.py            # Live balance tracking
 │   ├── relays/                # Relay payload collection
-│   │   ├── backfill.py        # Historical relay data
-│   │   ├── live.py            # Live relay monitoring
-│   │   └── constants.py       # Relay configuration
-│   └── builders/              # Builder identification
-│       ├── backfill.py        # Historical builder mapping
-│       └── live.py            # Live builder identification
+│   └── adjustments/           # Builder identification
 └── helpers/                   # Shared utilities
-    ├── db.py                  # Database configuration
-    └── logging.py             # Structured logging
 ```
 
 ## Features
@@ -61,7 +46,7 @@ src/
 ### Data Collection
 
 - **Blocks**: Full block headers with timestamps and miner addresses
-- **Builder Balances**: Before/after balance calculations to track proposer profit
+- **Builder Balances**: Before/after balance calculations to track builder profit
 - **Relay Payloads**: MEV-Boost relay bids and winning payloads
 - **Builder Identifiers**: Builder public keys mapped to canonical names
 - **PBS Analysis**: Aggregated view combining all data sources
@@ -169,7 +154,7 @@ Backfill historical data (run in separate terminals):
 # Backfill blocks (from Ethereum RPC)
 poetry run python src/data/blocks/backfill.py
 
-# Backfill proposer balances (from Ethereum RPC)
+# Backfill builder balances (from Ethereum RPC)
 poetry run python src/data/builders/backfill.py
 
 # Backfill relay payloads (from MEV-Boost relay APIs)

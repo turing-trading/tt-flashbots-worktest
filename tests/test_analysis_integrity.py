@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.analysis.db import AnalysisPBSV2DB as AnalysisPBSDB
+from src.analysis.db import AnalysisPBSV3DB as AnalysisPBSDB
 
 # Mark all tests in this module as integration tests (require database)
 pytestmark = pytest.mark.integration
