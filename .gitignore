@@ -1,4 +1,5 @@
 # Python
+.DS_Store
 .ruff_cache/
 .claude
 __pycache__/
@@ -61,8 +62,8 @@ data/
 # Output
 output/
 *.csv
-!deploy/grafana/annotations.csv
 *.json
+!deploy/grafana/dashboard.json
 *.parquet
 *.feather
 *.pickle
