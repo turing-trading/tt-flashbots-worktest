@@ -84,8 +84,8 @@ All results are derived using MEV-Boost payloads, enriched block traces, and on-
 
 | Party     | Profit (ETH) | Share (%) |
 | --------- | ------------ | --------- |
-| Proposers | **4508 ETH** | **78.3%** |
-| Builders  | **1251 ETH** | **21.7%** |
+| Proposers | **4516 ETH** | **85.0%** |
+| Builders  | **1508 ETH** | **15.0%** |
 
 ---
 
@@ -122,8 +122,8 @@ All results are derived using MEV-Boost payloads, enriched block traces, and on-
 
 | Builder                 | Overbid % |
 | ----------------------- | --------- |
+| Quasar                  | **13.9%** |
 | BuilderNet (Flashbots)  | **12.9%** |
-| Quasar                  | **12.7%** |
 | Titan                   | **9.81%** |
 | BuilderNet (Nethermind) | **9.54%** |
 | BuilderNet (Beaver)     | **7.53%** |

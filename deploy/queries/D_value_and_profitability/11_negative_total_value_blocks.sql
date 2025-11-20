@@ -1,3 +1,9 @@
+-- Negative Total Value blocks
+-- Row: Value and Profitability
+-- Lists all blocks where total value was negative.
+-- Helps diagnose which builders are losing money, and whether specific relays or strategies malfunctioned.
+--
+
 -- Top Negative Total Value Blocks
 -- Show the 5 most negative total_value blocks for both MEV-Boost and vanilla blocks
 --
@@ -40,7 +46,7 @@ WITH ranked_negative_blocks AS (
             PARTITION BY is_block_vanilla
             ORDER BY total_value ASC
         ) as rank
-    FROM analysis_pbs_v2
+    FROM analysis_pbs_v3
     WHERE
         $__timeFilter(block_timestamp)
         AND total_value < 0
@@ -52,9 +58,9 @@ SELECT
     builder_name,
     ROUND(total_value::numeric, 6) as total_value_eth,
     ROUND(builder_balance_increase::numeric, 6) as builder_balance_increase_eth,
-    ROUND(proposer_subsidy::numeric, 6) as proposer_subsidy_eth,
-    n_relays,
-    rank
+    ROUND(proposer_subsidy::numeric, 6) as proposer_subsidy_eth
+    --n_relays,
+    --rank
 FROM ranked_negative_blocks
 WHERE rank <= 5
 ORDER BY block_type DESC, rank ASC;

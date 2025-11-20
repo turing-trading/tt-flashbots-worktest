@@ -1,3 +1,9 @@
+-- Relay Market Share
+-- Row: Relay
+-- Shows the relative performance and activity of relays over time.
+-- Reveals reliability issues, relay churn, or surges in usage by builders or validators.
+--
+
 -- Relay Market Share (Rolling Window)
 -- Calculate each relay's share of payloads delivered over a rolling time window
 --
@@ -38,7 +44,7 @@ WITH relay_blocks AS (
         $__timeGroup(block_timestamp, $__interval) as time,
         UNNEST(relays) as relay,
         block_number
-    FROM analysis_pbs_v2
+    FROM analysis_pbs_v3
     WHERE
         $__timeFilter(block_timestamp)
         AND NOT is_block_vanilla
@@ -60,9 +66,22 @@ total_per_time AS (
 )
 SELECT
     rc.time,
-    rc.relay,
-    rc.blocks_delivered,
+    CASE
+        WHEN rc.relay = 'relay-analytics.ultrasound.money' THEN 'Ultrasound'
+        WHEN rc.relay = 'bloxroute.max-profit.blxrbdn.com' THEN 'Bloxroute Max Profit'
+        WHEN rc.relay = 'titanrelay.xyz' THEN 'Titan'
+        WHEN rc.relay = 'bloxroute.regulated.blxrbdn.com' THEN 'Bloxroute Regulated'
+        WHEN rc.relay = 'aestus.live' THEN 'Aestus'
+        WHEN rc.relay = 'agnostic-relay.net' THEN 'Agnostic'
+        WHEN rc.relay = 'boost-relay.flashbots.net' THEN 'Flashbots'
+        WHEN rc.relay = 'relay.ethgas.com' THEN 'EthGas'
+        WHEN rc.relay = 'relay.btcs.com' THEN 'BTCS'
+        WHEN rc.relay = 'mainnet-relay.securerpc.com' THEN 'Secure RPC'
+        WHEN rc.relay = 'relay.wenmerge.com' THEN 'Wenmerge'
+        ELSE rc.relay
+    END as relay,
+    --rc.blocks_delivered,
     ROUND((rc.blocks_delivered::numeric / tpt.total * 100), 2) as market_share_pct
 FROM relay_counts rc
 JOIN total_per_time tpt ON rc.time = tpt.time
-ORDER BY rc.time, rc.blocks_delivered DESC;
+ORDER BY rc.time, relay;

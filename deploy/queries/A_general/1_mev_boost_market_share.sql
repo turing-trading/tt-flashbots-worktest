@@ -1,3 +1,9 @@
+-- MEV-Boost Market Share 
+-- Row: General
+-- Shows the percentage of Ethereum blocks built through MEV-Boost vs. vanilla blocks.
+-- High MEV-Boost share indicates strong builder-relay ecosystem usage and higher proposer rewards.
+--
+
 -- MEV-Boost Market Share
 -- Show the fraction of blocks that use MEV-Boost vs vanilla blocks
 --
@@ -19,7 +25,7 @@ WITH block_types AS (
             ELSE 'mev_boost'
         END as block_type,
         COUNT(*) as block_count
-    FROM analysis_pbs_v2
+    FROM analysis_pbs_v3
     WHERE
         $__timeFilter(block_timestamp)
     GROUP BY is_block_vanilla
@@ -30,7 +36,7 @@ total_blocks AS (
 )
 SELECT
     bt.block_type,
-    bt.block_count,
+    --bt.block_count,
     ROUND((bt.block_count::numeric / tb.total * 100), 2) as market_share_pct
 FROM block_types bt
 CROSS JOIN total_blocks tb

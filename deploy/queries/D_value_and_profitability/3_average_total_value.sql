@@ -1,3 +1,9 @@
+-- Average Total Value
+-- Row: Value and Profitability
+-- Displays average ETH earned per block for MEV-Boost and vanilla.
+-- Useful high-level metric to quantify the value of MEV-Boost.
+--
+
 -- Average Profit by Block Type
 -- Compare average total value between MEV-Boost and vanilla blocks
 --
@@ -31,15 +37,15 @@ WITH block_type_profits AS (
         SUM(total_value) as total_profit_eth,
         AVG(total_value) as avg_profit_eth,
         COUNT(*) as block_count
-    FROM analysis_pbs_v2
+    FROM analysis_pbs_v3
     WHERE
         $__timeFilter(block_timestamp)
     GROUP BY is_block_vanilla
 )
 SELECT
     block_type,
-    ROUND(avg_profit_eth::numeric, 4) as avg_profit_eth,
-    ROUND(total_profit_eth::numeric, 4) as total_profit_eth,
-    block_count
+    ROUND(avg_profit_eth::numeric, 4) as avg_profit_eth
+    --ROUND(total_profit_eth::numeric, 4) as total_profit_eth,
+    --block_count
 FROM block_type_profits
-ORDER BY avg_profit_eth DESC;
+ORDER BY block_type ASC;

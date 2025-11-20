@@ -1,3 +1,8 @@
+-- Proposer share of total value
+-- Row: Value and Profitability
+-- Useful for monitoring whether builders retain too much value or if proposer rewards are healthy.
+--
+
 -- Builder Profit Split Analysis
 -- Shows the percentage of total value that goes to proposers vs builders, grouped by builder
 --
@@ -28,7 +33,7 @@
 
 WITH top_builders AS (
     SELECT builder_name
-    FROM analysis_pbs_v2
+    FROM analysis_pbs_v3
     WHERE
         $__timeFilter(block_timestamp)
         AND NOT is_block_vanilla
@@ -39,14 +44,14 @@ WITH top_builders AS (
 SELECT
     apv.builder_name,
     ROUND(
-        (SUM(apv.proposer_subsidy) / NULLIF(SUM(apv.total_value), 0) * 100)::numeric,
+        (AVG(apv.proposer_subsidy / (apv.total_value)) * 100)::numeric,
         2
-    ) as proposer_profit_pct,
-    ROUND(SUM(apv.proposer_subsidy)::numeric, 4) as total_proposer_profit_eth,
-    ROUND(SUM(apv.builder_balance_increase)::numeric, 4) as total_builder_profit_eth,
-    ROUND(SUM(apv.total_value)::numeric, 4) as total_value_eth,
-    COUNT(*) as block_count
-FROM analysis_pbs_v2 apv
+    ) as proposer_profit_pct
+    --ROUND(SUM(apv.proposer_subsidy)::numeric, 4) as total_proposer_profit_eth,
+    --ROUND(SUM(apv.builder_balance_increase)::numeric, 4) as total_builder_profit_eth,
+    --ROUND(SUM(apv.total_value)::numeric, 4) as total_value_eth,
+    --COUNT(*) as block_count
+FROM analysis_pbs_v3 apv
 INNER JOIN top_builders tb ON apv.builder_name = tb.builder_name
 WHERE
     $__timeFilter(apv.block_timestamp)

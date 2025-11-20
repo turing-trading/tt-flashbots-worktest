@@ -186,7 +186,7 @@ Tables are created automatically on first run.
 
 ### Loading Queries
 
-Queries are in `src/analysis/queries/`. To use in Grafana:
+Queries are in `deploy/queries`. To use in Grafana:
 
 1. Add PostgreSQL data source pointing to your database
 2. Create a new panel
