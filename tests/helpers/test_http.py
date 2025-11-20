@@ -601,3 +601,323 @@ class TestHttpIntegrationWithDecorators:
 
         assert result == {"status": "ok"}
         assert call_count == 3
+
+
+class TestRetryWithBackoffLogging:
+    """Tests for retry_with_backoff decorator with logging enabled."""
+
+    @pytest.mark.asyncio
+    async def test_logs_timeout_warnings(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that timeout errors are logged when log_errors=True."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+        call_count = 0
+
+        @retry_with_backoff(max_retries=3, base_delay=0.01, log_errors=True)
+        async def timeout_func() -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise httpx.TimeoutException("Timeout")
+            return "success"
+
+        result = await timeout_func()
+        assert result == "success"
+
+        # Verify logging occurred
+        assert any("timeout" in record.message.lower() for record in caplog.records)
+        assert any("attempt 1/3" in record.message for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_logs_http_error_warnings(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that HTTP errors are logged when log_errors=True."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+        call_count = 0
+
+        @retry_with_backoff(max_retries=3, base_delay=0.01, log_errors=True)
+        async def failing_func() -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise httpx.HTTPError("Network error")
+            return "success"
+
+        result = await failing_func()
+        assert result == "success"
+
+        # Verify logging occurred
+        assert any("HTTP error" in record.message for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_logs_general_exception_warnings(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that general exceptions are logged when log_errors=True."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+        call_count = 0
+
+        @retry_with_backoff(max_retries=3, base_delay=0.01, log_errors=True)
+        async def exception_func() -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise ValueError("Some error")
+            return "success"
+
+        result = await exception_func()
+        assert result == "success"
+
+        # Verify logging occurred
+        assert any("error" in record.message.lower() for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_logs_final_failure(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that final failure is logged when all retries exhausted."""
+        import logging
+
+        caplog.set_level(logging.ERROR)
+
+        @retry_with_backoff(max_retries=2, base_delay=0.01, log_errors=True)
+        async def always_fails() -> None:
+            raise httpx.HTTPError("Persistent error")
+
+        with pytest.raises(httpx.HTTPError):
+            await always_fails()
+
+        # Verify final error logging occurred
+        assert any("failed after" in record.message for record in caplog.records)
+
+
+class TestHandleHttpErrorsLogging:
+    """Tests for handle_http_errors decorator logging paths."""
+
+    @pytest.mark.asyncio
+    async def test_logs_404_as_debug(
+        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that 404 errors are logged at debug level."""
+        import logging
+
+        caplog.set_level(logging.DEBUG)
+
+        httpx_mock.add_response(
+            url="https://api.example.com/missing",
+            status_code=404,
+        )
+
+        @handle_http_errors(default_return=None, log_errors=True)
+        async def fetch_missing(client: httpx.AsyncClient) -> dict:
+            response = await client.get("https://api.example.com/missing")
+            response.raise_for_status()
+            return response.json()
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_missing(client)
+
+        assert result is None
+        # 404s should be logged at debug level
+        assert any("404" in record.message for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_logs_non_404_status_errors(
+        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that non-404 HTTP status errors are logged with details."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
+        httpx_mock.add_response(
+            url="https://api.example.com/error",
+            status_code=500,
+            text="Server Error Details",
+        )
+
+        @handle_http_errors(default_return=None, log_errors=True)
+        async def fetch_error(client: httpx.AsyncClient) -> dict:
+            response = await client.get("https://api.example.com/error")
+            response.raise_for_status()
+            return response.json()
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_error(client)
+
+        assert result is None
+        # Non-404 errors should be logged with status code
+        assert any("500" in record.message for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_logs_general_http_errors(
+        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test that general HTTP errors are logged."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
+        httpx_mock.add_exception(httpx.ConnectError("Connection failed"))
+
+        @handle_http_errors(default_return=None, log_errors=True)
+        async def fetch_connect_error(client: httpx.AsyncClient) -> dict:
+            response = await client.get("https://api.example.com/data")
+            return response.json()
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_connect_error(client)
+
+        assert result is None
+        assert any("HTTP error" in record.message for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_logs_unexpected_exceptions(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that unexpected exceptions are logged."""
+        import logging
+
+        caplog.set_level(logging.ERROR)
+
+        @handle_http_errors(default_return=None, log_errors=True)
+        async def raises_unexpected() -> dict:
+            raise RuntimeError("Unexpected error")
+
+        result = await raises_unexpected()
+
+        assert result is None
+        assert any("unexpected error" in record.message.lower() for record in caplog.records)
+
+
+class TestFetchJsonErrorPaths:
+    """Tests for fetch_json error handling paths."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_json_logs_404(
+        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test fetch_json logs 404 at debug level."""
+        import logging
+
+        caplog.set_level(logging.DEBUG)
+
+        httpx_mock.add_response(status_code=404)
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_json(client, "https://api.example.com/missing")
+
+        assert result is None
+        assert any("not found" in record.message.lower() for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_fetch_json_logs_non_404_errors(
+        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test fetch_json logs non-404 HTTP errors."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
+        httpx_mock.add_response(status_code=500)
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_json(client, "https://api.example.com/error")
+
+        assert result is None
+        assert any("HTTP error" in record.message for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_fetch_json_logs_connection_errors(
+        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test fetch_json logs connection errors."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
+        httpx_mock.add_exception(httpx.ConnectError("Connection failed"))
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_json(client, "https://api.example.com/data")
+
+        assert result is None
+        assert any("HTTP error" in record.message for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_fetch_json_logs_unexpected_exceptions(
+        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test fetch_json logs unexpected exceptions."""
+        import logging
+
+        caplog.set_level(logging.ERROR)
+
+        # Mock JSON parsing error
+        httpx_mock.add_response(text="not valid json")
+
+        async with httpx.AsyncClient() as client:
+            result = await fetch_json(client, "https://api.example.com/bad")
+
+        assert result is None
+        assert any("Error" in record.message for record in caplog.records)
+
+
+class TestPostJsonErrorPaths:
+    """Tests for post_json error handling paths."""
+
+    @pytest.mark.asyncio
+    async def test_post_json_logs_http_errors(
+        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test post_json logs HTTP errors."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
+        httpx_mock.add_response(method="POST", status_code=500)
+
+        async with httpx.AsyncClient() as client:
+            result = await post_json(client, "https://api.example.com/submit", {})
+
+        assert result is None
+        assert any("HTTP error" in record.message for record in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_post_json_logs_unexpected_exceptions(
+        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test post_json logs unexpected exceptions."""
+        import logging
+
+        caplog.set_level(logging.ERROR)
+
+        # Mock invalid JSON response that will cause an exception during parsing
+        httpx_mock.add_response(
+            method="POST",
+            text="not valid json",
+        )
+
+        async with httpx.AsyncClient() as client:
+            result = await post_json(client, "https://api.example.com/submit", {})
+
+        assert result is None
+        assert any("Error" in record.message for record in caplog.records)
+
+
+class TestRetryWithBackoffEdgeCases:
+    """Tests for retry_with_backoff edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_retry_with_zero_retries_raises_runtime_error(self) -> None:
+        """Test retry decorator with max_retries=0 raises RuntimeError."""
+
+        @retry_with_backoff(max_retries=0, log_errors=False)
+        async def some_func() -> str:
+            return "success"
+
+        # With 0 retries, the loop never executes, triggering the RuntimeError
+        with pytest.raises(RuntimeError, match="failed without exception"):
+            await some_func()
