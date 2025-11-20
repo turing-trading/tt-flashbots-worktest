@@ -171,3 +171,21 @@ async def upsert_models[DBModelType](
         except Exception:
             await session.rollback()
             raise
+
+
+async def create_tables() -> None:
+    """Create all database tables if they don't exist.
+
+    This is a convenience function that uses the Base metadata to create
+    all tables defined in the application.
+
+    Example:
+        ```python
+        from src.helpers.db import create_tables
+
+        # In your initialization code
+        await create_tables()
+        ```
+    """
+    async with async_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)

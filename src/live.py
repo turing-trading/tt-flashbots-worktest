@@ -19,7 +19,6 @@ Usage:
 
 from datetime import UTC, datetime
 import json
-import os
 import signal
 import sys
 
@@ -27,7 +26,6 @@ from typing import TYPE_CHECKING, Any
 
 import asyncio
 
-from dotenv import load_dotenv
 import httpx
 from websockets.asyncio.client import connect
 
@@ -43,22 +41,21 @@ from src.data.builders.models import BuilderBalance, ExtraBuilderBalance
 from src.data.relays.constants import RELAYS
 from src.data.relays.db import RelaysPayloadsDB
 from src.data.relays.models import RelaysPayloads
+from src.helpers.config import get_eth_rpc_url, get_eth_ws_url
 from src.helpers.db import upsert_models
 from src.helpers.logging import get_logger
+from src.helpers.models import BlockHeader
 from src.helpers.parsers import (
     parse_hex_block_number,
     parse_hex_int,
     parse_hex_timestamp,
     wei_to_eth,
 )
+from src.helpers.rpc import RPCClient
 
 
 if TYPE_CHECKING:
     from websockets.asyncio.client import ClientConnection
-
-
-# Load environment variables
-load_dotenv()
 
 logger = get_logger(__name__)
 
@@ -72,24 +69,15 @@ class LiveProcessor:
         Raises:
             ValueError: If ETH_WS_URL or ETH_RPC_URL environment variables are not set
         """
-        ws_url = os.getenv("ETH_WS_URL")
-        rpc_url = os.getenv("ETH_RPC_URL")
-
-        if not ws_url:
-            msg = "ETH_WS_URL environment variable is not set"
-            raise ValueError(msg)
-        if not rpc_url:
-            msg = "ETH_RPC_URL environment variable is not set"
-            raise ValueError(msg)
-
-        self.ws_url: str = ws_url
-        self.rpc_url: str = rpc_url
+        self.ws_url = get_eth_ws_url()
+        self.rpc_url = get_eth_rpc_url()
+        self.rpc_client = RPCClient(self.rpc_url)
 
         # HTTP client for RPC and relay API calls
         self.http_client = httpx.AsyncClient(timeout=30.0)
 
         # Queue for block headers
-        self.headers_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=100)
+        self.headers_queue: asyncio.Queue[BlockHeader] = asyncio.Queue(maxsize=100)
 
         # Stats
         self.blocks_received = 0
@@ -180,18 +168,21 @@ class LiveProcessor:
 
                 # Check if this is a newHeads notification
                 if "params" in data and "result" in data["params"]:
-                    block_header = data["params"]["result"]
+                    block_header_dict = data["params"]["result"]
+
+                    # Parse into BlockHeader model
+                    block_header = BlockHeader(**block_header_dict)
 
                     # Update stats
                     self.blocks_received += 1
-                    self.last_block_number = int(block_header.get("number", "0x0"), 16)
+                    self.last_block_number = int(block_header.number, 16)
                     self.last_block_time = datetime.now(UTC)
 
                     # Log block info
                     logger.info(
                         "New block #%s hash=%s...",
                         self.last_block_number,
-                        block_header.get("hash", "N/A")[:10],
+                        block_header.hash[:10],
                     )
 
                     # Put header in queue (non-blocking with timeout)
@@ -254,16 +245,16 @@ class LiveProcessor:
             await asyncio.gather(*active_tasks, return_exceptions=True)
             logger.info("All tasks cancelled")
 
-    async def _process_header(self, header: dict[str, Any]) -> None:
+    async def _process_header(self, header: BlockHeader) -> None:
         """Process a single block header through all stages.
 
         Args:
-            header: Block header dictionary from newHeads.
+            header: Block header model from newHeads.
         """
         block_number = parse_hex_block_number(header)
         try:
             # Get miner address for later stages
-            miner_address = header.get("miner", "")
+            miner_address = header.miner
 
             # Stage 1: Fetch/insert block
             block = await self._store_block(block_number)
@@ -391,32 +382,14 @@ class LiveProcessor:
                 logger.debug("No miner address for block #%s", block_number)
                 return None
 
-            # Get balance before (at block N-1) and after (at block N)
-            before_request = {
-                "jsonrpc": "2.0",
-                "method": "eth_getBalance",
-                "params": [miner_address, hex(block_number - 1)],
-                "id": 1,
-            }
-
-            after_request = {
-                "jsonrpc": "2.0",
-                "method": "eth_getBalance",
-                "params": [miner_address, hex(block_number)],
-                "id": 2,
-            }
-
-            # Make parallel requests
-            responses = await asyncio.gather(
-                self.http_client.post(self.rpc_url, json=before_request),
-                self.http_client.post(self.rpc_url, json=after_request),
+            # Get balance change using RPC client helper
+            (
+                balance_before,
+                balance_after,
+                balance_increase,
+            ) = await self.rpc_client.get_balance_change(
+                self.http_client, miner_address, block_number
             )
-
-            balance_before = parse_hex_int(responses[0].json().get("result", "0x0"))
-            balance_after = parse_hex_int(responses[1].json().get("result", "0x0"))
-
-            # Calculate balance increase
-            balance_increase = balance_after - balance_before
 
             # Create model
             builder_balance = BuilderBalance(
@@ -537,47 +510,33 @@ class LiveProcessor:
 
         try:
             # Query all relays concurrently
-            tasks = []
-            for relay in RELAYS:
-                url = (
+            tasks = [
+                self._fetch_relay_data(
+                    relay,
                     f"https://{relay}/relay/v1/data/bidtraces/"
-                    f"proposer_payload_delivered?block_number={block_number}"
+                    f"proposer_payload_delivered?block_number={block_number}",
                 )
-                tasks.append(self._fetch_relay_data(relay, url))
+                for relay in RELAYS
+            ]
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             # Process results
             for i, result in enumerate(results):
                 relay = RELAYS[i]
-                if isinstance(result, Exception):
+                if isinstance(result, BaseException):
                     logger.debug(
                         "Relay %s error for block #%s: %s", relay, block_number, result
                     )
                     continue
 
-                if not result or not isinstance(result, list):
+                # Type narrowing: result is now list[RelaysPayloads] | None
+                if not result:
                     continue
 
-                # Store each payload
-                for payload_data in result:
+                # Store each validated payload
+                for payload in result:
                     try:
-                        payload = RelaysPayloads(
-                            slot=payload_data.get("slot", 0),
-                            parent_hash=payload_data.get("parent_hash", ""),
-                            block_hash=payload_data.get("block_hash", ""),
-                            builder_pubkey=payload_data.get("builder_pubkey", ""),
-                            proposer_pubkey=payload_data.get("proposer_pubkey", ""),
-                            proposer_fee_recipient=payload_data.get(
-                                "proposer_fee_recipient", ""
-                            ),
-                            gas_limit=payload_data.get("gas_limit", 0),
-                            gas_used=payload_data.get("gas_used", 0),
-                            value=int(payload_data.get("value", 0)),
-                            block_number=payload_data.get("block_number", block_number),
-                            num_tx=payload_data.get("num_tx", 0),
-                        )
-
                         # Upsert with relay name
                         await upsert_models(
                             db_model_class=RelaysPayloadsDB,
@@ -588,7 +547,7 @@ class LiveProcessor:
                         # Track this relay data for analysis
                         relay_data_list.append({
                             "relay": relay,
-                            "value": int(payload_data.get("value", 0)),
+                            "value": payload.value,
                         })
 
                     except Exception:
@@ -610,7 +569,9 @@ class LiveProcessor:
             )
             return []
 
-    async def _fetch_relay_data(self, relay: str, url: str) -> list[dict] | None:
+    async def _fetch_relay_data(
+        self, relay: str, url: str
+    ) -> list[RelaysPayloads] | None:
         """Fetch data from a single relay.
 
         Args:
@@ -618,12 +579,24 @@ class LiveProcessor:
             url: Full URL to fetch.
 
         Returns:
-            List of payload dictionaries, or None if error.
+            List of validated RelaysPayloads models, or None if error.
         """
         try:
             response = await self.http_client.get(url)
             response.raise_for_status()
-            return response.json()
+            json_data: list[Any] = response.json()
+
+            # Validate each payload with Pydantic
+            validated_payloads: list[RelaysPayloads] = []
+            for item in json_data:
+                try:
+                    payload = RelaysPayloads(**item)
+                    validated_payloads.append(payload)
+                except Exception as e:
+                    logger.debug("Invalid payload from %s: %s", relay, e)
+                    continue
+
+            return validated_payloads or None
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 return None  # No data available yet
@@ -652,31 +625,16 @@ class LiveProcessor:
                 return []
 
             # Fetch and store balances for all builder addresses
-            balance_data = []
+            balance_data: list[dict[str, Any]] = []
             for builder_address in builder_addresses:
-                # Create RPC requests for balance before and after
-                before_request = {
-                    "jsonrpc": "2.0",
-                    "method": "eth_getBalance",
-                    "params": [builder_address, hex(block_number - 1)],
-                    "id": 1,
-                }
-                after_request = {
-                    "jsonrpc": "2.0",
-                    "method": "eth_getBalance",
-                    "params": [builder_address, hex(block_number)],
-                    "id": 2,
-                }
-
-                # Execute both requests in parallel
-                responses = await asyncio.gather(
-                    self.http_client.post(self.rpc_url, json=before_request),
-                    self.http_client.post(self.rpc_url, json=after_request),
+                # Get balance change using RPC client helper
+                (
+                    balance_before,
+                    balance_after,
+                    balance_increase,
+                ) = await self.rpc_client.get_balance_change(
+                    self.http_client, builder_address, block_number
                 )
-
-                balance_before = parse_hex_int(responses[0].json().get("result", "0x0"))
-                balance_after = parse_hex_int(responses[1].json().get("result", "0x0"))
-                balance_increase = balance_after - balance_before
 
                 # Create model
                 extra_builder_balance = ExtraBuilderBalance(

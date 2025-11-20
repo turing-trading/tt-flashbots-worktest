@@ -1,38 +1,26 @@
 """Backfill builder balance data using Ethereum JSON-RPC."""
 
-import os
-
 from typing import TYPE_CHECKING
 
-import asyncio
 from asyncio import run
 
 from sqlalchemy import text
 
-from dotenv import load_dotenv
 import httpx
 from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TaskID,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-)
 
 from src.data.builders.db import BuilderBalancesDB
 from src.data.builders.models import BuilderBalance
-from src.helpers.db import AsyncSessionLocal, Base, async_engine, upsert_models
+from src.helpers.config import get_eth_rpc_url
+from src.helpers.db import AsyncSessionLocal, create_tables, upsert_models
+from src.helpers.progress import create_standard_progress
+from src.helpers.rpc import RPCClient, batch_get_balance_changes
 
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-
-load_dotenv()
+    from rich.progress import Progress, TaskID
 
 
 class BackfillBuilderBalancesDelivered:
@@ -56,11 +44,8 @@ class BackfillBuilderBalancesDelivered:
         Raises:
             ValueError: If ETH_RPC_URL is not provided and not set in environment
         """
-        self.eth_rpc_url = eth_rpc_url or os.getenv("ETH_RPC_URL")
-        if not self.eth_rpc_url:
-            msg = "ETH_RPC_URL must be provided or set in environment variables"
-            raise ValueError(msg)
-
+        self.eth_rpc_url = get_eth_rpc_url(eth_rpc_url)
+        self.rpc_client = RPCClient(self.eth_rpc_url)
         self.batch_size = batch_size
         self.db_batch_size = db_batch_size
         self.parallel_batches = parallel_batches
@@ -115,66 +100,6 @@ class BackfillBuilderBalancesDelivered:
         rows = result.fetchall()
         return [(row[0], row[1]) for row in rows]
 
-    async def _batch_get_balances(
-        self,
-        client: httpx.AsyncClient,
-        requests: list[tuple[str, int]],
-    ) -> dict[tuple[str, int], int]:
-        """Batch multiple eth_getBalance calls into a single JSON-RPC request.
-
-        Args:
-            client: HTTP client
-            requests: List of (address, block_number) tuples
-
-        Returns:
-            Dict mapping (address, block_number) to balance in wei
-
-        Raises:
-            ValueError: If ETH_RPC_URL is not provided and not set in environment
-        """
-        # Build batch JSON-RPC request
-        batch_payload = []
-        if not self.eth_rpc_url:
-            msg = "ETH_RPC_URL must be provided or set in environment variables"
-            raise ValueError(msg)
-
-        for idx, (address, block_number) in enumerate(requests):
-            batch_payload.append({
-                "jsonrpc": "2.0",
-                "method": "eth_getBalance",
-                "params": [address, hex(block_number)],
-                "id": idx,
-            })
-
-        try:
-            response = await client.post(
-                self.eth_rpc_url,
-                json=batch_payload,
-                timeout=60.0,  # Increased timeout for batch requests
-            )
-            response.raise_for_status()
-
-            results = response.json()
-
-            # Map results back to (address, block_number)
-            balance_map = {}
-            for result in results:
-                idx = result["id"]
-                address, block_number = requests[idx]
-
-                if "result" in result:
-                    # Convert hex balance to int
-                    balance = int(result["result"], 16)
-                    balance_map[address, block_number] = balance
-                else:
-                    balance_map[address, block_number] = 0
-
-            return balance_map
-
-        except Exception:
-            # Return zeros for all requests on error
-            return dict.fromkeys(requests, 0)
-
     async def _process_blocks_batch(
         self,
         client: httpx.AsyncClient,
@@ -196,47 +121,28 @@ class BackfillBuilderBalancesDelivered:
         if not blocks:
             return 0
 
-        # Build requests for all balances we need
-        # For each block N, we need balance at N-1 and N
-        balance_requests = []
-        for block_number, builder in blocks:
-            balance_requests.extend((
-                (builder, block_number - 1),  # Balance before
-                (builder, block_number),  # Balance after
-            ))
+        # Convert blocks list from (block_number, miner) to (address, block_number)
+        address_block_pairs = [(miner, block_number) for block_number, miner in blocks]
 
-        # Process balance requests in parallel batches
-        all_balances = {}
-
-        # Split into batches
-        batches = [
-            balance_requests[i : i + self.batch_size]
-            for i in range(0, len(balance_requests), self.batch_size)
-        ]
-
-        # Process batches in parallel chunks
-        for i in range(0, len(batches), self.parallel_batches):
-            parallel_chunk = batches[i : i + self.parallel_batches]
-
-            # Execute multiple batch requests in parallel
-            results = await asyncio.gather(*[
-                self._batch_get_balances(client, batch) for batch in parallel_chunk
-            ])
-
-            # Merge results
-            for balances in results:
-                all_balances.update(balances)
+        # Use helper function to get all balance changes
+        changes = await batch_get_balance_changes(
+            self.rpc_client,
+            client,
+            address_block_pairs,
+            batch_size=self.batch_size,
+            parallel_batches=self.parallel_batches,
+        )
 
         # Create BuilderBalance records
-        builder_balances = []
-        for block_number, builder in blocks:
-            balance_before = all_balances.get((builder, block_number - 1), 0)
-            balance_after = all_balances.get((builder, block_number), 0)
-            balance_increase = balance_after - balance_before
+        builder_balances: list[BuilderBalance] = []
+        for block_number, miner in blocks:
+            balance_before, balance_after, balance_increase = changes.get(
+                (miner, block_number), (0, 0, 0)
+            )
 
             builder_balance = BuilderBalance(
                 block_number=block_number,
-                miner=builder,
+                miner=miner,
                 balance_before=balance_before,
                 balance_after=balance_after,
                 balance_increase=balance_increase,
@@ -251,9 +157,7 @@ class BackfillBuilderBalancesDelivered:
 
         return len(blocks)
 
-    async def _store_builder_balances(
-        self, balances: list[BuilderBalance]
-    ) -> None:
+    async def _store_builder_balances(self, balances: list[BuilderBalance]) -> None:
         """Store builder balances in the database."""
         if not balances:
             return
@@ -265,8 +169,7 @@ class BackfillBuilderBalancesDelivered:
 
     async def create_tables(self) -> None:
         """Create tables if they don't exist."""
-        async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        await create_tables()
 
     async def run(self, limit: int | None = None) -> None:
         """Run the backfill process.
@@ -312,18 +215,7 @@ class BackfillBuilderBalancesDelivered:
         )
 
         # Create overall progress display
-        overall_progress = Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TextColumn("•"),
-            TimeElapsedColumn(),
-            TextColumn("•"),
-            TimeRemainingColumn(),
-            console=self.console,
-            expand=True,
-        )
+        overall_progress = create_standard_progress(console=self.console, expand=True)
 
         total_processed = 0
         iteration = 0

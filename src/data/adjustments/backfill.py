@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import asyncio
 
@@ -21,7 +21,11 @@ from rich.progress import (
 )
 
 from src.data.adjustments.db import UltrasoundAdjustmentDB
-from src.helpers.db import AsyncSessionLocal, Base, async_engine
+from src.helpers.db import (
+    AsyncSessionLocal,
+    create_tables as create_tables_helper,
+)
+from src.helpers.models import AdjustmentResponse
 
 
 if TYPE_CHECKING:
@@ -33,7 +37,7 @@ console = Console()
 
 async def fetch_adjustment_from_api(
     slot: int, client: httpx.AsyncClient
-) -> tuple[bool, dict[str, Any] | None]:
+) -> tuple[bool, AdjustmentResponse | None]:
     """Fetch adjustment data from Ultrasound relay API.
 
     Returns:
@@ -52,8 +56,8 @@ async def fetch_adjustment_from_api(
         if "data" in data:
             adjustments = data["data"]
             if adjustments:
-                # Return first adjustment if multiple exist
-                return (True, adjustments[0])
+                # Parse into Pydantic model and return
+                return (True, AdjustmentResponse(**adjustments[0]))
         # Success but no adjustment found
         return (True, None)
     except httpx.HTTPError:
@@ -63,7 +67,7 @@ async def fetch_adjustment_from_api(
 
 
 def create_adjustment_record(
-    slot: int, adjustment_data: dict[str, Any] | None
+    slot: int, adjustment_data: AdjustmentResponse | None
 ) -> UltrasoundAdjustmentDB:
     """Create adjustment database record from API response."""
     now = datetime.now(UTC)
@@ -76,21 +80,21 @@ def create_adjustment_record(
             has_adjustment=False,
         )
 
-    # Parse adjustment data from API response
+    # Parse adjustment data from Pydantic model
     # Convert string Wei values to integers
-    adjusted_value = adjustment_data.get("adjusted_value")
-    delta = adjustment_data.get("delta")
-    submitted_value = adjustment_data.get("submitted_value")
+    adjusted_value = adjustment_data.adjusted_value
+    delta = adjustment_data.delta
+    submitted_value = adjustment_data.submitted_value
 
     return UltrasoundAdjustmentDB(
         slot=slot,
-        adjusted_block_hash=adjustment_data.get("adjusted_block_hash"),
+        adjusted_block_hash=adjustment_data.adjusted_block_hash,
         adjusted_value=int(adjusted_value) if adjusted_value else None,
-        block_number=adjustment_data.get("block_number"),
-        builder_pubkey=adjustment_data.get("builder_pubkey"),
+        block_number=adjustment_data.block_number,
+        builder_pubkey=adjustment_data.builder_pubkey,
         delta=int(delta) if delta else None,
-        submitted_block_hash=adjustment_data.get("submitted_block_hash"),
-        submitted_received_at=adjustment_data.get("submitted_received_at"),
+        submitted_block_hash=adjustment_data.submitted_block_hash,
+        submitted_received_at=adjustment_data.submitted_received_at,
         submitted_value=int(submitted_value) if submitted_value else None,
         fetched_at=now,
         has_adjustment=True,
@@ -99,8 +103,7 @@ def create_adjustment_record(
 
 async def create_tables() -> None:
     """Create tables if they don't exist."""
-    async with async_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await create_tables_helper()
 
 
 async def get_ultrasound_slots_to_process(
@@ -129,11 +132,11 @@ async def get_ultrasound_slots_to_process(
 async def process_batch(
     slots_batch: list[tuple[int, int]],
     client: httpx.AsyncClient,
-) -> list[tuple[int, bool, dict[str, Any] | None]]:
+) -> list[tuple[int, bool, AdjustmentResponse | None]]:
     """Process a batch of slots concurrently.
 
     Returns:
-        List of (slot, success, data) tuples
+        List of (slot, success, data) tuples where data is an AdjustmentResponse model
     """
     tasks = [fetch_adjustment_from_api(slot, client) for slot, _ in slots_batch]
     results = await asyncio.gather(*tasks)

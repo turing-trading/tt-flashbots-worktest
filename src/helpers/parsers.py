@@ -2,24 +2,30 @@
 
 from datetime import UTC, datetime
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 
-def parse_hex_block_number(header: dict[str, Any]) -> int:
+if TYPE_CHECKING:
+    from src.helpers.models import BlockHeader
+
+
+def parse_hex_block_number(header: BlockHeader) -> int:
     """Parse block number from hex string in block header.
 
     Args:
-        header: Block header dictionary containing a "number" field
+        header: Block header model containing a "number" field
 
     Returns:
         int: Block number as integer
 
     Example:
-        >>> header = {"number": "0x1234"}
+        >>> from src.helpers.models import BlockHeader
+        >>> header = BlockHeader(number="0x1234", hash="0x...",
+        parentHash="0x...", miner="0x...", timestamp="0x...")
         >>> parse_hex_block_number(header)
         4660
     """
-    return int(header.get("number", "0x0"), 16)
+    return int(header.number, 16)
 
 
 def parse_hex_timestamp(hex_timestamp: str) -> datetime:

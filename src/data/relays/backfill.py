@@ -9,16 +9,6 @@ from sqlalchemy import Column, select
 import httpx
 from pydantic import TypeAdapter
 from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TaskID,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-)
 
 from src.data.relays.constants import (
     BEACON_ENDPOINT,
@@ -34,10 +24,13 @@ from src.data.relays.db import (
 )
 from src.data.relays.models import RelaysPayloads
 from src.helpers.db import AsyncSessionLocal, upsert_models
+from src.helpers.progress import create_standard_progress
 
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from rich.progress import TaskID
 
 
 class BackfillRelayPayloadDelivered:
@@ -52,7 +45,7 @@ class BackfillRelayPayloadDelivered:
         self.default_limit = LIMITS.get("proposer_payload_delivered", 200)
         self.console = Console()
         self.progress = None
-        self.tasks = {}  # Track progress task IDs per relay
+        self.tasks: dict[str, TaskID] = {}  # Track progress task IDs per relay
 
     def _get_limit_for_relay(self, relay: str) -> int:
         """Get the appropriate limit for a specific relay."""
@@ -119,12 +112,8 @@ class BackfillRelayPayloadDelivered:
         )
         result = await session.execute(stmt)
         checkpoint = result.scalar_one_or_none()
-        if (
-            checkpoint
-            and checkpoint.from_slot is not None
-            and checkpoint.to_slot is not None
-        ):
-            return cast("int", checkpoint.from_slot), cast("int", checkpoint.to_slot)
+        if checkpoint:
+            return checkpoint.from_slot, checkpoint.to_slot
         return None
 
     async def _update_checkpoint(
@@ -403,18 +392,7 @@ class BackfillRelayPayloadDelivered:
         self.console.print()
 
         # Create progress display
-        self.progress = Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TextColumn("•"),
-            TimeElapsedColumn(),
-            TextColumn("•"),
-            TimeRemainingColumn(),
-            console=self.console,
-            expand=True,
-        )
+        self.progress = create_standard_progress(console=self.console, expand=True)
 
         with self.progress:
             # Create tasks for each relay

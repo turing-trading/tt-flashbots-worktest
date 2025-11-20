@@ -2,9 +2,8 @@
 
 from datetime import UTC, datetime, timedelta
 import io
-import os
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import asyncio
 from asyncio import run
@@ -18,24 +17,19 @@ from defusedxml import ElementTree
 from dotenv import load_dotenv
 import httpx
 from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TaskID,
-    TextColumn,
-    TimeElapsedColumn,
-)
 
 from src.data.blocks.db import BlockCheckpoints, BlockDB
 from src.data.blocks.models import Block
-from src.helpers.db import AsyncSessionLocal, Base, async_engine
+from src.helpers.config import get_eth_rpc_url
+from src.helpers.db import AsyncSessionLocal, create_tables
 from src.helpers.parsers import parse_hex_int, parse_hex_timestamp, wei_to_eth
+from src.helpers.progress import create_simple_progress
 
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from rich.progress import Progress, TaskID
 
 
 load_dotenv()
@@ -73,7 +67,11 @@ class BackfillBlocks:
             else datetime.now(UTC).date()
         )
         self.batch_size = batch_size
-        self.eth_rpc_url = eth_rpc_url or os.getenv("ETH_RPC_URL")
+        # eth_rpc_url is optional for blocks backfill (only needed for missing blocks)
+        try:
+            self.eth_rpc_url = get_eth_rpc_url(eth_rpc_url)
+        except ValueError:
+            self.eth_rpc_url = None
         self.rpc_batch_size = rpc_batch_size
         self.parallel_batches = parallel_batches
         self.console = Console()
@@ -145,7 +143,8 @@ class BackfillBlocks:
             response.raise_for_status()
 
             # Read parquet from bytes
-            return pd.read_parquet(io.BytesIO(response.content))
+            # Note: pandas-stubs has incomplete type info for filters parameter
+            return pd.read_parquet(io.BytesIO(response.content))  # type: ignore[misc]
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
@@ -156,11 +155,11 @@ class BackfillBlocks:
 
     def _dataframe_to_blocks(self, df: pd.DataFrame) -> list[Block]:
         """Convert DataFrame to list of Block Pydantic models."""
-        blocks = []
+        blocks: list[Block] = []
         for _, row in df.iterrows():
             # Handle timestamp conversion
             timestamp_val = cast("pd.Timestamp", row["timestamp"])
-            timestamp = cast("datetime", pd.Timestamp(timestamp_val).to_pydatetime())
+            timestamp = pd.Timestamp(timestamp_val).to_pydatetime()
 
             # Handle base_fee_per_gas which might be NaN
             base_fee_val = row["base_fee_per_gas"]
@@ -242,7 +241,7 @@ class BackfillBlocks:
             msg = "ETH_RPC_URL must be configured to fetch missing blocks"
             raise ValueError(msg)
 
-        payload = {
+        payload: dict[str, Any] = {
             "jsonrpc": "2.0",
             "method": "eth_blockNumber",
             "params": [],
@@ -386,7 +385,7 @@ class BackfillBlocks:
             raise ValueError(msg)
 
         # Build batch JSON-RPC request
-        batch_payload = []
+        batch_payload: list[dict[str, Any]] = []
         for idx, block_number in enumerate(block_numbers):
             batch_payload.append({
                 "jsonrpc": "2.0",
@@ -409,10 +408,10 @@ class BackfillBlocks:
             results = response.json()
 
             # Map results back to block numbers
-            block_map = {}
+            block_map: dict[int, Block] = {}
             for result in results:
-                idx = result["id"]
-                block_number = block_numbers[idx]
+                idx: int = result["id"]
+                block_number: int = block_numbers[idx]
 
                 if "result" not in result or result["result"] is None:
                     continue
@@ -485,7 +484,7 @@ class BackfillBlocks:
             for i in range(0, len(missing_blocks), self.rpc_batch_size)
         ]
 
-        all_blocks = {}
+        all_blocks: dict[int, Block] = {}
         fetched_count = 0
 
         # Process batches in parallel chunks
@@ -520,8 +519,7 @@ class BackfillBlocks:
 
     async def create_tables(self) -> None:
         """Create tables if they don't exist."""
-        async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        await create_tables()
 
     async def _backfill_date(
         self,
@@ -631,16 +629,7 @@ class BackfillBlocks:
                 )
 
                 # Create progress display
-                progress = Progress(
-                    SpinnerColumn(),
-                    TextColumn("[progress.description]{task.description}"),
-                    BarColumn(),
-                    MofNCompleteColumn(),
-                    TextColumn("•"),
-                    TimeElapsedColumn(),
-                    console=self.console,
-                    expand=True,
-                )
+                progress = create_simple_progress(console=self.console, expand=True)
 
                 with progress:
                     task_id = progress.add_task(
@@ -661,7 +650,7 @@ class BackfillBlocks:
         await self.create_tables()
 
         # Generate all dates in range
-        all_dates = []
+        all_dates: list[str] = []
         current_date = self.start_date
         while current_date <= self.end_date:
             all_dates.append(current_date.strftime("%Y-%m-%d"))
@@ -695,16 +684,7 @@ class BackfillBlocks:
         self.console.print(f"[cyan]To process: {total_days:,}[/cyan]\n")
 
         # Create progress display
-        progress = Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TextColumn("•"),
-            TimeElapsedColumn(),
-            console=self.console,
-            expand=True,
-        )
+        progress = create_simple_progress(console=self.console, expand=True)
 
         total_blocks = 0
 
