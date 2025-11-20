@@ -312,10 +312,20 @@ class BackfillRelayPayloadDelivered:
                 phase2_needed = from_slot > target_end_slot
 
             # Create progress task for this relay
-            estimated_total_slots = latest_slot - 5000000
+            # Calculate actual remaining slots based on checkpoint and phases
+            total_remaining_slots = 0
+            if phase1_needed:
+                total_remaining_slots += latest_slot - to_slot
+            if phase2_needed:
+                total_remaining_slots += from_slot - target_end_slot
+
+            # If no work needed, set a minimal total to show completion
+            if total_remaining_slots == 0:
+                total_remaining_slots = 1
+
             task_id = self.progress.add_task(
                 f"{relay[:25]:25}",
-                total=estimated_total_slots,
+                total=total_remaining_slots,
             )
             self.tasks[relay] = task_id
 
@@ -357,7 +367,7 @@ class BackfillRelayPayloadDelivered:
                     self.progress.update(
                         task_id,
                         description=f"{relay[:25]:25} [green]✓[/green] done",
-                        completed=estimated_total_slots,
+                        completed=total_remaining_slots,
                     )
             except Exception:
                 # Mark as failed but don't raise - let other relays continue

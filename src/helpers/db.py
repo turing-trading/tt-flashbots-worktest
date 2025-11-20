@@ -130,40 +130,44 @@ async def upsert_models[DBModelType](
         ValueError: If the database model class cannot be inspected
     """
     async with AsyncSessionLocal() as session:
-        # Prepare data for insert
-        data = [model.model_dump() for model in pydantic_models]
+        try:
+            # Prepare data for insert
+            data = [model.model_dump() for model in pydantic_models]
 
-        # Add extra fields to each item if provided
-        if extra_fields:
-            for item in data:
-                item.update(extra_fields)
+            # Add extra fields to each item if provided
+            if extra_fields:
+                for item in data:
+                    item.update(extra_fields)
 
-        # Get primary key column names using SQLAlchemy inspection
-        mapper = inspect(db_model_class)
-        if not mapper:
-            msg = f"Cannot inspect {db_model_class}"
-            raise ValueError(msg)
-        pk_columns = [col.name for col in mapper.primary_key]
+            # Get primary key column names using SQLAlchemy inspection
+            mapper = inspect(db_model_class)
+            if not mapper:
+                msg = f"Cannot inspect {db_model_class}"
+                raise ValueError(msg)  # noqa: TRY301
+            pk_columns = [col.name for col in mapper.primary_key]
 
-        # Get all column names from the first data item
-        if not data:
-            return
+            # Get all column names from the first data item
+            if not data:
+                return
 
-        all_columns = set(data[0].keys())
+            all_columns = set(data[0].keys())
 
-        # Create INSERT statement with ON CONFLICT DO UPDATE
-        stmt = pg_insert(db_model_class).values(data)
+            # Create INSERT statement with ON CONFLICT DO UPDATE
+            stmt = pg_insert(db_model_class).values(data)
 
-        # Build the update dict (all columns except primary keys)
-        update_dict = {
-            col: stmt.excluded[col] for col in all_columns if col not in pk_columns
-        }
+            # Build the update dict (all columns except primary keys)
+            update_dict = {
+                col: stmt.excluded[col] for col in all_columns if col not in pk_columns
+            }
 
-        # Apply ON CONFLICT DO UPDATE
-        stmt = stmt.on_conflict_do_update(
-            index_elements=pk_columns,
-            set_=update_dict,
-        )
+            # Apply ON CONFLICT DO UPDATE
+            stmt = stmt.on_conflict_do_update(
+                index_elements=pk_columns,
+                set_=update_dict,
+            )
 
-        await session.execute(stmt)
-        await session.commit()
+            await session.execute(stmt)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
