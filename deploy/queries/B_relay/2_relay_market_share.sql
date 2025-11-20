@@ -11,6 +11,9 @@
 -- within configurable time buckets (e.g., hourly, daily) over the selected time range.
 -- Perfect for time series visualizations showing how relay market share changes over time.
 --
+-- Note: When a builder submits the same block to multiple relays, that block
+-- will be counted once for each relay, so the total may exceed 100%.
+--
 -- Variables:
 -- - $__timeFilter(block_timestamp): Grafana time range filter
 -- - $__timeGroup(block_timestamp, '1h'): Grafana time grouping (e.g., '1h', '1d', '1w')
