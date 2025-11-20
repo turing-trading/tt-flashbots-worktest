@@ -27,7 +27,7 @@ All results are derived using MEV-Boost payloads, enriched block traces, and on-
 ## ✅ Key Findings
 
 * MEV-Boost adoption remains high at **~93%**.
-* Proposers capture **78.3%** of captured value (4508 ETH), builders capture **21.7%** (1251 ETH).
+* Proposers capture **89%** of captured value, builders capture **8%** and relays **2%**.
 * Builder market is **heavily centralized**, with Titan producing nearly half of all MEV-Boost blocks.
 * Relay distribution shows **Ultrasound**, **Bloxroute Max Profit**, and **Titan** as dominant payload sources.
 * MEV-Boost blocks show **0% negative total values**, whereas vanilla blocks show **1.59% negative total values**.
@@ -105,17 +105,16 @@ All results are derived using MEV-Boost payloads, enriched block traces, and on-
 | mev_boost  | **0%**        |
 | vanilla    | **1.59%**     |
 
----
 
 ## **Proposer Profit Share by Builder**
 
 | Builder                 | Proposer Profit % |
 | ----------------------- | ----------------- |
-| Quasar                  | **87.5%**         |
-| Titan                   | **73.6%**         |
-| BuilderNet (Flashbots)  | **73.1%**         |
-| BuilderNet (Beaver)     | **67.5%**         |
-| BuilderNet (Nethermind) | **62.2%**         |
+| Quasar                  | **92.7%**         |
+| Titan                   | **82.3%**         |
+| BuilderNet (Flashbots)  | **81.3%**         |
+| BuilderNet (Beaver)     | **77.9%**         |
+| BuilderNet (Nethermind) | **77.1%**         |
 
 ---
 
