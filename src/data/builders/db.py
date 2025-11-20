@@ -8,7 +8,7 @@ from src.helpers.db import Base
 class BuilderBalancesDB(Base):
     """Miner balance increase per block."""
 
-    __tablename__ = "builders_balance"
+    __tablename__ = "builder_balance"
 
     block_number = Column(BigInteger, primary_key=True, index=True)
     miner = Column(String(42), nullable=False, index=True)

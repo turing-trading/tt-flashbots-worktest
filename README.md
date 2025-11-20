@@ -175,7 +175,7 @@ poetry run python src/analysis/backfill.py
 The pipeline uses PostgreSQL with the following tables:
 
 - `blocks` - Block headers (includes extra_data for builder identification)
-- `builders_balance` - Builder balance changes
+- `builder_balance` - Builder balance changes
 - `relays_payloads` - Relay bid data
 - `analysis_pbs_v2` - Aggregated PBS metrics with builder names parsed from extra_data
 - `*_checkpoints` - Progress tracking for backfill
