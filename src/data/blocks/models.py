@@ -1,12 +1,9 @@
 """Pydantic models for Ethereum blocks."""
 
-from typing import TYPE_CHECKING
+# Pydantic needs this at runtime to validate the datetime field
+from datetime import datetime  # noqa: TC003
 
 from pydantic import BaseModel
-
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 
 class Block(BaseModel):

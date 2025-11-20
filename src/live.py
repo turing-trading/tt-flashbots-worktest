@@ -195,47 +195,64 @@ class LiveProcessor:
                     )
 
                     # Put header in queue (non-blocking with timeout)
-                    try:
-                        await asyncio.wait_for(
-                            self.headers_queue.put(block_header), timeout=1.0
-                        )
-                    except TimeoutError:
-                        logger.warning(
-                            "Queue full, dropping block #%s", self.last_block_number
-                        )
+                    await self.headers_queue.put(block_header)
 
             except json.JSONDecodeError:
                 logger.exception("Failed to decode WebSocket message")
+            except asyncio.CancelledError:
+                break
             except Exception:
                 logger.exception("Error processing block header")
 
     async def process_headers_from_queue(self) -> None:
-        """Consume block headers from queue and process each one."""
+        """Consume block headers from queue and process each one concurrently."""
         logger.info("Header queue consumer started")
 
-        task: asyncio.Task[None] | None = None
+        # Track active processing tasks to allow concurrent processing
+        active_tasks: set[asyncio.Task[None]] = set()
 
         while not self.should_shutdown:
             try:
+                # Clean up completed tasks
+                done_tasks = {task for task in active_tasks if task.done()}
+                for task in done_tasks:
+                    try:
+                        # Retrieve any exceptions that occurred
+                        task.result()
+                    except Exception:
+                        logger.exception("Task failed")
+                active_tasks -= done_tasks
+
                 # Get header from queue with timeout to allow shutdown checks
-                header = await asyncio.wait_for(self.headers_queue.get(), timeout=1.0)
+                try:
+                    header = await asyncio.wait_for(
+                        self.headers_queue.get(), timeout=1.0
+                    )
+                except TimeoutError:
+                    # No item in queue, continue to check shutdown flag
+                    continue
 
-                # Process this header in a separate task
+                # Process this header in a concurrent task
                 task = asyncio.create_task(self._process_header(header))
+                active_tasks.add(task)
 
-                # Mark task as done
+                # Mark queue item as done
                 self.headers_queue.task_done()
 
-            except TimeoutError:
-                # No item in queue, continue to check shutdown flag
-                continue
             except asyncio.CancelledError:
                 logger.info("Header queue consumer cancelled")
                 break
             except Exception:
                 logger.exception("Error in queue consumer")
-            if task:
+
+        # Cancel and wait for all active tasks to complete on shutdown
+        if active_tasks:
+            logger.info("Cancelling %s active tasks...", len(active_tasks))
+            for task in active_tasks:
                 task.cancel()
+            # Wait for tasks to finish cancellation
+            await asyncio.gather(*active_tasks, return_exceptions=True)
+            logger.info("All tasks cancelled")
 
     async def _process_header(self, header: dict[str, Any]) -> None:
         """Process a single block header through all stages.
@@ -283,6 +300,9 @@ class LiveProcessor:
                 adjustment_data,
             )
 
+        except asyncio.CancelledError:
+            logger.debug("Header processing cancelled")
+            return
         except Exception:
             logger.exception("Error processing block #%s", block_number)
 
@@ -296,6 +316,7 @@ class LiveProcessor:
             Block object if successful, None otherwise.
         """
         try:
+            logger.debug("Fetching block #%s from RPC...", block_number)
             # Fetch full block via RPC
             rpc_request = {
                 "jsonrpc": "2.0",
@@ -313,6 +334,7 @@ class LiveProcessor:
                 return None
 
             block_data = result["result"]
+            logger.debug("Parsing block #%s data...", block_number)
 
             # Parse block data
             block = Block(
@@ -336,6 +358,7 @@ class LiveProcessor:
                 ),
             )
 
+            logger.debug("Storing block #%s in database...", block_number)
             # Store in database
             await upsert_models(
                 db_model_class=BlockDB,
@@ -365,7 +388,7 @@ class LiveProcessor:
         """
         try:
             if not miner_address:
-                logger.warning("No miner address for block #%s", block_number)
+                logger.debug("No miner address for block #%s", block_number)
                 return None
 
             # Get balance before (at block N-1) and after (at block N)
@@ -414,7 +437,7 @@ class LiveProcessor:
             logger.info(
                 "Stored builder balance for block #%s: %s ETH",
                 block_number,
-                f"{wei_to_eth(balance_increase):.4f} ETH",
+                f"{wei_to_eth(balance_increase):.4f}",
             )
 
             return {
@@ -489,7 +512,7 @@ class LiveProcessor:
             elapsed_minutes += 1
 
         if not relay_data:
-            logger.warning(
+            logger.info(
                 "Block #%s: No relay data found after %s m of retries",
                 block_number,
                 elapsed_minutes,
@@ -559,6 +582,7 @@ class LiveProcessor:
                         await upsert_models(
                             db_model_class=RelaysPayloadsDB,
                             pydantic_models=[payload],
+                            extra_fields={"relay": relay},
                         )
 
                         # Track this relay data for analysis
