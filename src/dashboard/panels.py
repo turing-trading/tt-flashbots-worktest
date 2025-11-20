@@ -51,7 +51,7 @@ def create_sql_target(
         "rawSql": query,
         "refId": ref_id,
         "hide": hide,
-        "datasource": "${DS_TIMESCALEDB_- FLASHBOTS}",
+        "datasource": "ts-flashbots",
         "format": "table",
         "rawQuery": True,
     }
@@ -74,6 +74,9 @@ def create_pie_chart(
     h: int = 15,
     unit: str = "percent",
     pie_type: str = "donut",
+    reduce_fields: str = "",
+    transformations: Optional[List[Dict[str, Any]]] = None,
+    overrides: Optional[List[Dict[str, Any]]] = None,
     **kwargs: Any,
 ) -> PieChartv2:
     """Create a pie chart panel.
@@ -88,6 +91,9 @@ def create_pie_chart(
         h: Height in grid units (default 15)
         unit: Unit for values (default "percent")
         pie_type: Type of pie chart ("pie" or "donut")
+        reduce_fields: Field regex for reduce options (e.g., "/^market_share_pct$/")
+        transformations: List of transformation dictionaries
+        overrides: List of field override dictionaries
         **kwargs: Additional arguments to pass to PieChartv2
 
     Returns:
@@ -101,6 +107,12 @@ def create_pie_chart(
         unit=unit,
         pieType=pie_type,
         legendPlacement="right",
+        legendDisplayMode="list",
+        reduceOptionsCalcs=["lastNotNull"],
+        reduceOptionsFields=reduce_fields,
+        reduceOptionsValues=True if reduce_fields else False,
+        transformations=transformations or [],
+        overrides=overrides or [],
         **kwargs,
     )
 
@@ -116,6 +128,9 @@ def create_time_series(
     unit: str = "percent",
     interval: str = "10m",
     max_data_points: int = 300,
+    stacking_mode: Optional[str] = None,
+    transformations: Optional[List[Dict[str, Any]]] = None,
+    overrides: Optional[List[Dict[str, Any]]] = None,
     **kwargs: Any,
 ) -> TimeSeries:
     """Create a time series panel.
@@ -131,17 +146,29 @@ def create_time_series(
         unit: Unit for values (default "percent")
         interval: Time interval for grouping (default "10m")
         max_data_points: Maximum data points (default 300)
+        stacking_mode: Stacking mode ("normal", "percent", or None for no stacking)
+        transformations: List of transformation dictionaries
+        overrides: List of field override dictionaries
         **kwargs: Additional arguments to pass to TimeSeries
 
     Returns:
         TimeSeries object
     """
+    # Build stacking configuration
+    if stacking_mode:
+        stacking_config = {"group": "A", "mode": stacking_mode}
+    else:
+        stacking_config = {}
+
     return TimeSeries(
         title=title,
         description=description,
         targets=[create_sql_target(query, interval=interval, max_data_points=max_data_points)],
         gridPos=GridPos(h=h, w=w, x=x, y=y),
         unit=unit,
+        stacking=stacking_config,
+        transformations=transformations or [],
+        overrides=overrides or [],
         **kwargs,
     )
 
@@ -155,6 +182,8 @@ def create_bar_chart(
     w: int = 12,
     h: int = 15,
     unit: str = "percent",
+    query2: Optional[str] = None,
+    transformations: Optional[List[Dict[str, Any]]] = None,
     **kwargs: Any,
 ) -> BarChart:
     """Create a bar chart panel.
@@ -162,12 +191,14 @@ def create_bar_chart(
     Args:
         title: Panel title
         description: Panel description
-        query: SQL query
+        query: SQL query (first query)
         x: X position in grid
         y: Y position in grid
         w: Width in grid units (default 12)
         h: Height in grid units (default 15)
         unit: Unit for values (default "percent") - applied via overrides
+        query2: Optional second SQL query (for merge transformations)
+        transformations: List of transformation dictionaries
         **kwargs: Additional arguments to pass to BarChart
 
     Returns:
@@ -179,12 +210,18 @@ def create_bar_chart(
         # Add unit override if needed
         pass
 
+    # Build targets list
+    targets = [create_sql_target(query, ref_id="A")]
+    if query2:
+        targets.append(create_sql_target(query2, ref_id="B"))
+
     return BarChart(
         title=title,
         description=description,
-        targets=[create_sql_target(query)],
+        targets=targets,
         gridPos=GridPos(h=h, w=w, x=x, y=y),
         overrides=overrides,
+        transformations=transformations or [],
         **kwargs,
     )
 
@@ -198,6 +235,7 @@ def create_stat(
     w: int = 12,
     h: int = 7,
     unit: str = "none",
+    transformations: Optional[List[Dict[str, Any]]] = None,
     **kwargs: Any,
 ) -> Stat:
     """Create a stat panel.
@@ -211,6 +249,7 @@ def create_stat(
         w: Width in grid units (default 12)
         h: Height in grid units (default 7)
         unit: Unit for values (default "none") - called "format" in Stat
+        transformations: List of transformation dictionaries
         **kwargs: Additional arguments to pass to Stat
 
     Returns:
@@ -222,6 +261,7 @@ def create_stat(
         targets=[create_sql_target(query)],
         gridPos=GridPos(h=h, w=w, x=x, y=y),
         format=unit,  # Stat uses "format" not "unit"
+        transformations=transformations or [],
         **kwargs,
     )
 
