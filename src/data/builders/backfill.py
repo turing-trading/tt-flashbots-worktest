@@ -63,12 +63,12 @@ class BackfillBuilderBalancesDelivered:
         """Get total count of missing blocks.
 
         Returns:
-            Total number of blocks missing from builders_balance table
+            Total number of blocks missing from builder_balance table
         """
         query_str = """
         SELECT COUNT(*)
         FROM blocks b
-        LEFT JOIN builders_balance mb ON b.number = mb.block_number
+        LEFT JOIN builder_balance mb ON b.number = mb.block_number
         WHERE mb.block_number IS NULL
         AND b.number > 0
         """
@@ -80,7 +80,7 @@ class BackfillBuilderBalancesDelivered:
     async def _get_missing_block_numbers(
         self, session: AsyncSession, limit: int | None = None
     ) -> list[tuple[int, str]]:
-        """Get block numbers that exist in blocks but not in builders_balance.
+        """Get block numbers that exist in blocks but not in builder_balance.
 
         Args:
             limit: Max blocks to fetch (capped at 10,000 to minimize DB impact)
@@ -93,7 +93,7 @@ class BackfillBuilderBalancesDelivered:
         query_str = """
         SELECT b.number, b.miner
         FROM blocks b
-        LEFT JOIN builders_balance mb ON b.number = mb.block_number
+        LEFT JOIN builder_balance mb ON b.number = mb.block_number
         WHERE mb.block_number IS NULL
         AND b.number > 0
         ORDER BY b.number DESC

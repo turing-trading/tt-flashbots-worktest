@@ -14,7 +14,7 @@ class AnalysisPBSV3(BaseModel):
     )
     builder_balance_increase: float = Field(
         default=0.0,
-        description="Builder balance increase in ETH from builders_balances table",
+        description="Builder balance increase in ETH from builder_balances table",
     )
     proposer_subsidy: float = Field(
         default=0.0,

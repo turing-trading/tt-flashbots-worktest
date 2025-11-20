@@ -29,7 +29,7 @@ from src.helpers.logging import get_logger
 from src.helpers.parsers import wei_to_eth
 
 # Default to process last year of data
-START_DATE = datetime.now() - timedelta(days=365 * 5)
+START_DATE = datetime.now() - timedelta(days=1)
 # 2024-01-01
 # START_DATE = datetime(2024, 2, 1)
 END_DATE = datetime.now() - timedelta(minutes=10)
@@ -116,7 +116,7 @@ class BackfillAnalysisPBSV3:
     async def _aggregate_block_data(
         self, session: AsyncSession, block_numbers: list[int]
     ) -> list[dict]:
-        """Aggregate data from blocks, builders_balance, relays_payloads, adjustments, and extra_builder_balance.
+        """Aggregate data from blocks, builder_balance, relays_payloads, adjustments, and extra_builder_balance.
 
         Args:
             session: Database session
@@ -157,7 +157,7 @@ class BackfillAnalysisPBSV3:
                 BlockDB.extra_data.label("extra_data"),
                 BuilderBalancesDB.balance_increase.label("builder_balance_increase"),
                 func.array_agg(RelaysPayloadsDB.relay).label("relays"),
-                func.max(RelaysPayloadsDB.value).label("builder_subsidy"),
+                func.max(RelaysPayloadsDB.value).label("proposer_subsidy"),
                 func.min(RelaysPayloadsDB.slot).label("slot"),
                 extra_transfers_subq.c.builder_extra_transfers_wei.label(
                     "builder_extra_transfers_wei"
@@ -208,7 +208,7 @@ class BackfillAnalysisPBSV3:
 
             # Convert Wei to ETH using helper with defaults
             builder_balance_increase = wei_to_eth(row.builder_balance_increase) or 0.0
-            builder_subsidy = wei_to_eth(row.builder_subsidy) or 0.0
+            proposer_subsidy = wei_to_eth(row.proposer_subsidy) or 0.0
 
             # Parse builder name directly from extra_data
             builder_name = parse_builder_name_from_extra_data(row.extra_data)
@@ -220,7 +220,7 @@ class BackfillAnalysisPBSV3:
 
             # Calculate total value including all components (treat None relay_fee as 0)
             total_value = (
-                builder_balance_increase + builder_subsidy + (relay_fee or 0.0)
+                builder_balance_increase + proposer_subsidy + (relay_fee or 0.0)
             )
 
             if total_value < 0 and builder_extra_transfers > 0:
@@ -231,7 +231,7 @@ class BackfillAnalysisPBSV3:
                     "block_number": row.block_number,
                     "block_timestamp": row.block_timestamp,
                     "builder_balance_increase": builder_balance_increase,
-                    "builder_subsidy": builder_subsidy,
+                    "proposer_subsidy": proposer_subsidy,
                     "total_value": total_value,
                     "is_block_vanilla": is_block_vanilla,
                     "n_relays": n_relays,
@@ -267,7 +267,7 @@ class BackfillAnalysisPBSV3:
             set_={
                 AnalysisPBSV3DB.block_timestamp: stmt.excluded.block_timestamp,
                 AnalysisPBSV3DB.builder_balance_increase: stmt.excluded.builder_balance_increase,
-                AnalysisPBSV3DB.builder_subsidy: stmt.excluded.builder_subsidy,
+                AnalysisPBSV3DB.proposer_subsidy: stmt.excluded.proposer_subsidy,
                 AnalysisPBSV3DB.total_value: stmt.excluded.total_value,
                 AnalysisPBSV3DB.is_block_vanilla: stmt.excluded.is_block_vanilla,
                 AnalysisPBSV3DB.n_relays: stmt.excluded.n_relays,
