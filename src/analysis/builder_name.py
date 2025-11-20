@@ -116,12 +116,14 @@ def _advanced_clean_builder_name(name: str) -> str:
     if "," in cleaned:
         cleaned = cleaned.split(",")[0].strip()
 
-    # First, try to extract content from parentheses (e.g., "Quasar (quasar.win)" -> "quasar.win")
+    # First, try to extract content from parentheses
+    # (e.g., "Quasar (quasar.win)" -> "quasar.win")
     paren_match = re.search(r"\(([^)]+)\)", cleaned)
     if paren_match:
         cleaned = paren_match.group(1)
 
-    # Extract domain/pool names from slash-separated patterns like "EU2/pool.binance.com/"
+    # Extract domain/pool names from slash-separated patterns
+    # like "EU2/pool.binance.com/"
     if "/" in cleaned:
         parts = [p for p in cleaned.split("/") if p]
         if parts:
@@ -129,7 +131,10 @@ def _advanced_clean_builder_name(name: str) -> str:
 
     # For domain-like strings (containing dots), extract just the domain part
     if "." in cleaned:
-        tld_pattern = r"([a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*\.(?:com|net|org|io|win|xyz|eth|pool|info|co|uk|de|fr|cn|jp))"
+        tld_pattern = (
+            r"([a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*\."
+            r"(?:com|net|org|io|win|xyz|eth|pool|info|co|uk|de|fr|cn|jp))"
+        )
         domain_match = re.match(tld_pattern, cleaned)
         if domain_match:
             cleaned = domain_match.group(1)

@@ -1,5 +1,5 @@
-# Multi-stage build for Python 3.13 live streaming application
-FROM python:3.13-slim AS builder
+# Multi-stage build for Python 3.14 live streaming application
+FROM python:3.14-slim AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \

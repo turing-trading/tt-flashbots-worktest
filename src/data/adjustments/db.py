@@ -34,7 +34,11 @@ class UltrasoundAdjustmentDB(Base):
     has_adjustment = Column(Boolean, nullable=False, default=True)
 
     def __repr__(self) -> str:
-        return f"<UltrasoundAdjustment(slot={self.slot}, block_number={self.block_number}, delta={self.delta})>"
+        """Return string representation of UltrasoundAdjustment."""
+        return (
+            f"<UltrasoundAdjustment(slot={self.slot}, "
+            f"block_number={self.block_number}, delta={self.delta})>"
+        )
 
 
 async def get_adjustment_by_slot(

@@ -28,7 +28,6 @@ from src.data.builders.db import ExtraBuilderBalanceDB
 from src.data.builders.known_builder_addresses import KNOWN_BUILDER_ADDRESSES
 from src.data.builders.models import ExtraBuilderBalance
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
-from src.helpers.logging import get_logger
 
 
 if TYPE_CHECKING:
@@ -55,18 +54,19 @@ class BackfillExtraBuilderBalances:
             batch_size: Number of getBalance calls per JSON-RPC batch request
             db_batch_size: Number of records to insert per database batch
             parallel_batches: Number of batch RPC requests to run in parallel
+
+        Raises:
+            ValueError: If ETH_RPC_URL is not provided and not set in environment
+            variables
         """
         self.eth_rpc_url = eth_rpc_url or os.getenv("ETH_RPC_URL")
         if not self.eth_rpc_url:
             msg = "ETH_RPC_URL must be provided or set in environment variables"
-            raise ValueError(
-                msg
-            )
+            raise ValueError(msg)
 
         self.batch_size = batch_size
         self.db_batch_size = db_batch_size
         self.parallel_batches = parallel_batches
-        self.logger = get_logger("backfill_extra_builder_balances", log_level="INFO")
         self.console = Console()
 
     async def _get_missing_blocks_count(self, session: AsyncSession) -> int:
@@ -80,13 +80,10 @@ class BackfillExtraBuilderBalances:
         if not miner_addresses:
             return 0
 
-        # Format as SQL array literal
-        miner_list = ", ".join([f"'{addr}'" for addr in miner_addresses])
-
-        query_str = f"""
+        query_str = """
         SELECT COUNT(*)
         FROM blocks b
-        WHERE b.miner IN ({miner_list})
+        WHERE b.miner = ANY(:miner_addresses)
         AND b.number > 0
         AND NOT EXISTS (
             SELECT 1
@@ -97,16 +94,19 @@ class BackfillExtraBuilderBalances:
         )
         """
 
-        result = await session.execute(text(query_str))
+        result = await session.execute(
+            text(query_str), {"miner_addresses": miner_addresses}
+        )
         count = result.scalar()
         return count or 0
 
     async def _get_missing_block_numbers(
         self, session: AsyncSession, limit: int | None = None
     ) -> list[tuple[int, str]]:
-        """Get block numbers where miner is in KNOWN_BUILDER_ADDRESSES but not in extra_builder_balance.
+        """Get block numbers where miner is in KNOWN_BUILDER_ADDRESSES.
 
         Args:
+            session: Database session
             limit: Max blocks to fetch (capped at 10,000 to minimize DB impact)
 
         Returns:
@@ -117,13 +117,13 @@ class BackfillExtraBuilderBalances:
         if not miner_addresses:
             return []
 
-        # Format as SQL array literal
-        miner_list = ", ".join([f"'{addr}'" for addr in miner_addresses])
+        # Cap at 10,000 to minimize database impact
+        actual_limit = min(limit, 10_000) if limit else 10_000
 
-        query_str = f"""
+        query_str = """
         SELECT b.number, b.miner
         FROM blocks b
-        WHERE b.miner IN ({miner_list})
+        WHERE b.miner = ANY(:miner_addresses)
         AND b.number > 0
         AND NOT EXISTS (
             SELECT 1
@@ -133,18 +133,14 @@ class BackfillExtraBuilderBalances:
             LIMIT 1
         )
         ORDER BY b.number DESC
+        LIMIT :limit
         """
 
-        # Cap at 10,000 to minimize database impact
-        actual_limit = min(limit, 10_000) if limit else 10_000
-        query_str += f" LIMIT {actual_limit}"
-
-        self.logger.debug(
-            f"Executing query to find missing blocks (limit: {actual_limit:,})..."
+        result = await session.execute(
+            text(query_str),
+            {"miner_addresses": miner_addresses, "limit": actual_limit},
         )
-        result = await session.execute(text(query_str))
         rows = result.fetchall()
-        self.logger.debug(f"Query returned {len(rows)} missing blocks")
         return [(row[0], row[1]) for row in rows]
 
     async def _batch_get_balances(
@@ -160,9 +156,15 @@ class BackfillExtraBuilderBalances:
 
         Returns:
             Dict mapping (address, block_number) to balance in wei
+
+        Raises:
+            ValueError: If ETH_RPC_URL is not provided or set in environment variables
         """
-        # Build batch JSON-RPC request
         batch_payload = []
+        if not self.eth_rpc_url:
+            msg = "ETH_RPC_URL must be provided or set in environment variables"
+            raise ValueError(msg)
+
         for idx, (address, block_number) in enumerate(requests):
             batch_payload.append({
                 "jsonrpc": "2.0",
@@ -172,15 +174,6 @@ class BackfillExtraBuilderBalances:
             })
 
         try:
-            # eth_rpc_url is guaranteed to be str (validated in __init__)
-            assert self.eth_rpc_url is not None
-
-            # Log first RPC call for debugging
-            if requests:
-                self.logger.debug(
-                    f"Fetching {len(requests)} balances (blocks {requests[0][1]} to {requests[-1][1]})"
-                )
-
             response = await client.post(
                 self.eth_rpc_url,
                 json=batch_payload,
@@ -201,16 +194,11 @@ class BackfillExtraBuilderBalances:
                     balance = int(result["result"], 16)
                     balance_map[address, block_number] = balance
                 else:
-                    self.logger.error(
-                        f"Error getting balance for {address} at block {block_number}: "
-                        f"{result.get('error', 'Unknown error')}"
-                    )
                     balance_map[address, block_number] = 0
 
             return balance_map
 
-        except Exception as e:
-            self.logger.exception(f"Error in batch balance request: {e}")
+        except Exception:
             # Return zeros for all requests on error
             return dict.fromkeys(requests, 0)
 
@@ -238,20 +226,17 @@ class BackfillExtraBuilderBalances:
             return 0
 
         # Build requests for all balances we need
-        # For each block N with known miner, we need balances for all builder addresses at N-1 and N
+        # For each block N with known miner, we need balances for all builder addresses
+        # at N-1 and N
         balance_requests = []
         for block_number, miner in blocks:
             # Get builder addresses for this miner
             builder_addresses = KNOWN_BUILDER_ADDRESSES.get(miner, [])
             for builder_address in builder_addresses:
-                balance_requests.append((
-                    builder_address,
-                    block_number - 1,
-                ))  # Balance before
-                balance_requests.append((
-                    builder_address,
-                    block_number,
-                ))  # Balance after
+                balance_requests.extend((
+                    (builder_address, block_number - 1),  # Balance before
+                    (builder_address, block_number),  # Balance after
+                ))
 
         # Process balance requests in parallel batches
         all_balances = {}
@@ -337,7 +322,8 @@ class BackfillExtraBuilderBalances:
         """Run the backfill process.
 
         Args:
-            limit: Maximum number of blocks to process per iteration (None = all missing blocks)
+            limit: Maximum number of blocks to process per iteration (None = all
+            missing blocks)
 
         Note:
             Automatically iterates over 10K blocks at a time until all missing blocks
@@ -354,11 +340,13 @@ class BackfillExtraBuilderBalances:
             f"[cyan]Batch size: {self.batch_size} balances/request[/cyan]"
         )
         self.console.print(
-            f"[cyan]Parallel batches: {self.parallel_batches} concurrent requests[/cyan]"
+            f"[cyan]Parallel batches: {self.parallel_batches} "
+            "concurrent requests[/cyan]"
         )
         self.console.print(f"[cyan]DB batch size: {self.db_batch_size} records[/cyan]")
         self.console.print(
-            f"[cyan]Known builder addresses: {len(KNOWN_BUILDER_ADDRESSES)} miners[/cyan]"
+            f"[cyan]Known builder addresses: {len(KNOWN_BUILDER_ADDRESSES)} "
+            "miners[/cyan]"
         )
         self.console.print("[cyan]Query limit: 10,000 blocks per iteration[/cyan]\n")
 
@@ -412,16 +400,18 @@ class BackfillExtraBuilderBalances:
                 if not missing_blocks:
                     break
 
-                async with httpx.AsyncClient() as client:
-                    async with AsyncSessionLocal() as session:
-                        # Process in batches
-                        for i in range(0, len(missing_blocks), self.db_batch_size):
-                            batch = missing_blocks[i : i + self.db_batch_size]
+                async with (
+                    httpx.AsyncClient() as client,
+                    AsyncSessionLocal() as session,
+                ):
+                    # Process in batches
+                    for i in range(0, len(missing_blocks), self.db_batch_size):
+                        batch = missing_blocks[i : i + self.db_batch_size]
 
-                            processed = await self._process_blocks_batch(
-                                client, session, batch, overall_progress, overall_task
-                            )
-                            total_processed += processed
+                        processed = await self._process_blocks_batch(
+                            client, session, batch, overall_progress, overall_task
+                        )
+                        total_processed += processed
 
         self.console.print(
             f"\n[bold green]✓ Backfill completed[/bold green] - "

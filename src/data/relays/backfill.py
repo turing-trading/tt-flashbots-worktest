@@ -1,11 +1,10 @@
 """Backfill data from relays."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from asyncio import CancelledError, create_task, gather, run, sleep
 
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import Column, select
 
 import httpx
 from pydantic import TypeAdapter
@@ -30,12 +29,11 @@ from src.data.relays.constants import (
     RELAYS,
 )
 from src.data.relays.db import (
-    RelaysPayloadsCheckpoints,
+    RelaysPayloadsCheckpointsDB,
     RelaysPayloadsDB,
 )
 from src.data.relays.models import RelaysPayloads
-from src.helpers.db import AsyncSessionLocal, Base, async_engine
-from src.helpers.logging import get_logger
+from src.helpers.db import AsyncSessionLocal, upsert_models
 
 
 if TYPE_CHECKING:
@@ -52,7 +50,6 @@ class BackfillRelayPayloadDelivered:
             "/relay/v1/data/bidtraces/proposer_payload_delivered",
         )
         self.default_limit = LIMITS.get("proposer_payload_delivered", 200)
-        self.logger = get_logger("backfill_payloads", log_level="WARNING")
         self.console = Console()
         self.progress = None
         self.tasks = {}  # Track progress task IDs per relay
@@ -102,17 +99,11 @@ class BackfillRelayPayloadDelivered:
             except httpx.TimeoutException:
                 # Retry on timeout with exponential backoff
                 retry_delay = base_delay * (2**attempt)
-                self.logger.warning(
-                    f"Timeout from {relay}, retrying in {retry_delay}s "
-                    f"(attempt {attempt + 1}/{max_retries})"
-                )
                 await sleep(retry_delay)
                 continue
 
-            except Exception as e:
+            except Exception:
                 retry_delay = base_delay * (2**attempt)  # Exponential backoff
-                error_msg = f"Error fetching from {relay}: {e}"
-                self.logger.warning(error_msg)
                 await sleep(retry_delay)
 
         # If all retries failed, return empty list
@@ -123,8 +114,8 @@ class BackfillRelayPayloadDelivered:
     ) -> tuple[int, int] | None:
         """Get the latest checkpoint for this relay."""
         canonical_name = self._get_canonical_relay_name(relay)
-        stmt = select(RelaysPayloadsCheckpoints).where(
-            RelaysPayloadsCheckpoints.relay == canonical_name
+        stmt = select(RelaysPayloadsCheckpointsDB).where(
+            RelaysPayloadsCheckpointsDB.relay == canonical_name
         )
         result = await session.execute(stmt)
         checkpoint = result.scalar_one_or_none()
@@ -133,7 +124,7 @@ class BackfillRelayPayloadDelivered:
             and checkpoint.from_slot is not None
             and checkpoint.to_slot is not None
         ):
-            return (checkpoint.from_slot, checkpoint.to_slot)  # type: ignore[return-value]
+            return cast("int", checkpoint.from_slot), cast("int", checkpoint.to_slot)
         return None
 
     async def _update_checkpoint(
@@ -145,16 +136,16 @@ class BackfillRelayPayloadDelivered:
     ) -> None:
         """Update or create checkpoint for this relay."""
         canonical_name = self._get_canonical_relay_name(relay)
-        stmt = select(RelaysPayloadsCheckpoints).where(
-            RelaysPayloadsCheckpoints.relay == canonical_name
+        stmt = select(RelaysPayloadsCheckpointsDB).where(
+            RelaysPayloadsCheckpointsDB.relay == canonical_name
         )
         result = await session.execute(stmt)
         checkpoint = result.scalar_one_or_none()
         if checkpoint:
-            checkpoint.from_slot = from_slot  # type: ignore[assignment]
-            checkpoint.to_slot = to_slot  # type: ignore[assignment]
+            checkpoint.from_slot = cast("Column[int]", from_slot)
+            checkpoint.to_slot = cast("Column[int]", to_slot)
         else:
-            checkpoint = RelaysPayloadsCheckpoints(
+            checkpoint = RelaysPayloadsCheckpointsDB(
                 relay=canonical_name,
                 from_slot=from_slot,
                 to_slot=to_slot,
@@ -164,7 +155,6 @@ class BackfillRelayPayloadDelivered:
 
     async def _store_registrations(
         self,
-        session: AsyncSession,
         registrations: list[RelaysPayloads],
         relay: str,
     ) -> None:
@@ -174,35 +164,12 @@ class BackfillRelayPayloadDelivered:
 
         # Convert Pydantic models to dicts and add canonical relay name
         canonical_name = self._get_canonical_relay_name(relay)
-        values = [
-            {**reg.model_dump(), "relay": canonical_name} for reg in registrations
-        ]
 
-        # Upsert registrations into the database using ON CONFLICT
-        stmt = pg_insert(RelaysPayloadsDB).values(values)
-        excluded = stmt.excluded
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["slot", "relay"],
-            set_={
-                RelaysPayloadsDB.parent_hash: excluded.parent_hash,
-                RelaysPayloadsDB.block_hash: excluded.block_hash,
-                RelaysPayloadsDB.builder_pubkey: excluded.builder_pubkey,
-                RelaysPayloadsDB.proposer_pubkey: excluded.proposer_pubkey,
-                RelaysPayloadsDB.proposer_fee_recipient: excluded.proposer_fee_recipient,
-                RelaysPayloadsDB.gas_limit: excluded.gas_limit,
-                RelaysPayloadsDB.gas_used: excluded.gas_used,
-                RelaysPayloadsDB.value: excluded.value,
-                RelaysPayloadsDB.block_number: excluded.block_number,
-                RelaysPayloadsDB.num_tx: excluded.num_tx,
-            },
+        await upsert_models(
+            db_model_class=RelaysPayloadsDB,
+            pydantic_models=list(registrations),
+            extra_fields={"relay": canonical_name},
         )
-        await session.execute(stmt)
-        await session.commit()
-
-    async def create_tables(self) -> None:
-        """Create tables if they don't exist."""
-        async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
 
     async def _backfill_range(
         self,
@@ -211,7 +178,6 @@ class BackfillRelayPayloadDelivered:
         relay: str,
         start_slot: int,
         end_slot: int,
-        relay_limit: int,
         task_id: TaskID,
         phase_name: str,
         from_slot: int,
@@ -219,8 +185,22 @@ class BackfillRelayPayloadDelivered:
     ) -> tuple[int, int]:
         """Backfill a specific range going backwards from start_slot to end_slot.
 
+        Args:
+            client: httpx.AsyncClient
+            session: AsyncSession
+            relay: str
+            start_slot: int
+            end_slot: int
+            task_id: TaskID
+            phase_name: str
+            from_slot: int
+            to_slot: int
+
         Returns:
             tuple[int, int]: Updated (from_slot, to_slot) after backfilling
+
+        Raises:
+            ValueError: If progress is not initialized
         """
         current_cursor = start_slot
         total_registrations = 0
@@ -236,32 +216,21 @@ class BackfillRelayPayloadDelivered:
 
             if not registrations:
                 consecutive_empty_responses += 1
-                self.logger.debug(
-                    f"[{phase_name}] Empty response from {relay} at cursor {current_cursor:,} "
-                    f"({consecutive_empty_responses}/{max_consecutive_empty})"
-                )
 
                 # If we've hit too many consecutive empty responses, stop
                 if consecutive_empty_responses >= max_consecutive_empty:
-                    self.logger.warning(
-                        f"[{phase_name}] {relay} returned {consecutive_empty_responses} "
-                        f"consecutive empty responses, stopping backfill"
-                    )
                     break
 
                 # Jump back by a larger amount to find where data might exist
                 # Use a large jump to handle relays with sparse historical data
                 jump_size = 50_000  # ~1.7 days worth of slots (12 sec per slot)
                 current_cursor = max(current_cursor - jump_size, end_slot)
-                self.logger.debug(
-                    f"[{phase_name}] Jumping back to cursor {current_cursor:,} to find data"
-                )
                 continue
 
             # Reset consecutive empty counter when we get data
             consecutive_empty_responses = 0
 
-            await self._store_registrations(session, registrations, relay)
+            await self._store_registrations(registrations, relay)
             total_registrations += len(registrations)
 
             min_slot_in_batch = min(reg.slot for reg in registrations)
@@ -283,12 +252,9 @@ class BackfillRelayPayloadDelivered:
             self.progress.update(
                 task_id,
                 completed=slots_processed,
-                description=f"{relay[:25]:25} [{phase_name}] slot={min_slot_in_batch:,}",
-            )
-
-            self.logger.debug(
-                f"[{phase_name}] Fetched {len(registrations)} from {relay} "
-                f"(slots {min_slot_in_batch} to {max_slot_in_batch})"
+                description=(
+                    f"{relay[:25]:25} [{phase_name}] slot={min_slot_in_batch:,}"
+                ),
             )
 
             current_cursor = min_slot_in_batch
@@ -309,13 +275,18 @@ class BackfillRelayPayloadDelivered:
 
         Two-phase backfill strategy:
         1. Phase 1: Always fetch latest_slot -> to_slot (new data since last run)
-        2. Phase 2: If from_slot != target_end_slot, fetch from_slot -> target_end_slot (historical data)
+        2. Phase 2: If from_slot != target_end_slot, fetch from_slot -> target_end_slot
+        (historical data)
 
         Args:
             relay: Relay to backfill
             latest_slot: Latest slot to backfill to
             target_end_slot: Target end slot (default: 0)
-            ignore_checkpoints: If True, ignore existing checkpoints and force backfill (default: False)
+            ignore_checkpoints: If True, ignore existing checkpoints and force backfill
+            (default: False)
+
+        Raises:
+            ValueError: If progress is not initialized
         """
         if self.progress is None:
             msg = "Progress is not initialized"
@@ -354,8 +325,6 @@ class BackfillRelayPayloadDelivered:
 
             try:
                 async with httpx.AsyncClient(timeout=timeout, limits=limits) as client:
-                    relay_limit = self._get_limit_for_relay(relay)
-
                     # Phase 1: Fetch new data (latest_slot -> to_slot)
                     if phase1_needed:
                         from_slot, to_slot = await self._backfill_range(
@@ -364,14 +333,13 @@ class BackfillRelayPayloadDelivered:
                             relay,
                             latest_slot,
                             to_slot,
-                            relay_limit,
                             task_id,
                             "new",
                             from_slot,
                             to_slot,
                         )
 
-                    # Phase 2: Continue historical backfill (from_slot -> target_end_slot)
+                    # Phase 2: Continue historical backfill (from_slot -> target_end)
                     if phase2_needed:
                         from_slot, to_slot = await self._backfill_range(
                             client,
@@ -379,7 +347,6 @@ class BackfillRelayPayloadDelivered:
                             relay,
                             from_slot,
                             target_end_slot,
-                            relay_limit,
                             task_id,
                             "historical",
                             from_slot,
@@ -392,13 +359,12 @@ class BackfillRelayPayloadDelivered:
                         description=f"{relay[:25]:25} [green]✓[/green] done",
                         completed=estimated_total_slots,
                     )
-            except Exception as e:
+            except Exception:
                 # Mark as failed but don't raise - let other relays continue
                 self.progress.update(
                     task_id,
                     description=f"{relay[:25]:25} [red]✗[/red] failed",
                 )
-                self.logger.exception(f"Backfill failed for {relay}: {e}")
                 raise  # Re-raise to be caught by gather(return_exceptions=True)
 
     async def run(
@@ -410,8 +376,6 @@ class BackfillRelayPayloadDelivered:
             start_slot: Optional start slot (defaults to latest slot)
             end_slot: Optional end slot (defaults to 0)
         """
-        await self.create_tables()
-
         if start_slot is None:
             latest_slot = await self._get_latest_slot()
             latest_slot = int(

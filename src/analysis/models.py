@@ -11,7 +11,10 @@ if TYPE_CHECKING:
 
 
 class AnalysisPBSV3(BaseModel):
-    """PBS analysis data model V3 with additional fields for slot, extra transfers, and relay fees."""
+    """PBS analysis data model V3.
+
+    Includes additional fields for slot, extra transfers, and relay fees.
+    """
 
     block_number: int = Field(..., description="Block number from blocks table")
     block_timestamp: datetime = Field(
@@ -27,7 +30,10 @@ class AnalysisPBSV3(BaseModel):
     )
     total_value: float = Field(
         default=0.0,
-        description="Total MEV value (builder_balance_increase + proposer_subsidy + relay_fee + builder_extra_transfers)",
+        description=(
+            "Total MEV value (builder_balance_increase + proposer_subsidy "
+            "+ relay_fee + builder_extra_transfers)"
+        ),
     )
     is_block_vanilla: bool = Field(
         default=False,
@@ -43,15 +49,24 @@ class AnalysisPBSV3(BaseModel):
     )
     slot: int | None = Field(
         None,
-        description="Beacon chain slot number from relays_payloads table (null for vanilla blocks)",
+        description=(
+            "Beacon chain slot number from relays_payloads table "
+            "(null for vanilla blocks)"
+        ),
     )
     builder_extra_transfers: float = Field(
         default=0.0,
-        description="Sum of positive balance increases for known builder addresses in ETH from extra_builder_balance table",
+        description=(
+            "Sum of positive balance increases for known builder addresses "
+            "in ETH from extra_builder_balance table"
+        ),
     )
     relay_fee: float | None = Field(
         None,
-        description="Relay fee in ETH from ultrasound_adjustments table (only for Ultrasound relay)",
+        description=(
+            "Relay fee in ETH from ultrasound_adjustments table "
+            "(only for Ultrasound relay)"
+        ),
     )
 
     class Config:

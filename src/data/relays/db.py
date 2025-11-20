@@ -5,8 +5,8 @@ from sqlalchemy import BigInteger, Column, Integer, Numeric, String
 from src.helpers.db import Base
 
 
-class RelaysPayloadsCheckpoints(Base):
-    """Signed validator registration checkpoints."""
+class RelaysPayloadsCheckpointsDB(Base):
+    """Relay payloads checkpoints."""
 
     __tablename__ = "relays_payloads_checkpoints"
 
