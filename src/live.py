@@ -37,9 +37,9 @@ from src.analysis.models import AnalysisPBSV3
 from src.data.adjustments.db import UltrasoundAdjustmentDB
 from src.data.blocks.db import BlockDB
 from src.data.blocks.models import Block
-from src.data.proposers.db import ExtraBuilderBalanceDB, ProposerBalancesDB
-from src.data.proposers.known_builder_addresses import KNOWN_BUILDER_ADDRESSES
-from src.data.proposers.models import ExtraBuilderBalance, ProposerBalance
+from src.data.builders.db import BuilderBalancesDB, ExtraBuilderBalanceDB
+from src.data.builders.known_builder_addresses import KNOWN_BUILDER_ADDRESSES
+from src.data.builders.models import BuilderBalance, ExtraBuilderBalance
 from src.data.relays.constants import RELAYS
 from src.data.relays.db import RelaysPayloadsDB
 from src.data.relays.models import RelaysPayloads
@@ -83,7 +83,7 @@ class LiveProcessor:
         # Stats
         self.blocks_received = 0
         self.blocks_processed = 0
-        self.proposers_processed = 0
+        self.builders_processed = 0
         self.relays_processed = 0
         self.analysis_processed = 0
         self.last_block_number = 0
@@ -384,7 +384,7 @@ class LiveProcessor:
             balance_increase = balance_after - balance_before
 
             # Create model
-            proposer_balance = ProposerBalance(
+            proposer_balance = BuilderBalance(
                 block_number=block_number,
                 miner=miner_address,
                 balance_before=balance_before,
@@ -394,12 +394,12 @@ class LiveProcessor:
 
             # Store in database
             await upsert_model(
-                db_model_class=ProposerBalancesDB,
+                db_model_class=BuilderBalancesDB,
                 pydantic_model=proposer_balance,
                 primary_key_value=block_number,
             )
 
-            self.proposers_processed += 1
+            self.builders_processed += 1
             logger.info(
                 f"Stored proposer balance for block #{block_number}: "
                 f"{wei_to_eth(balance_increase):.4f} ETH"
