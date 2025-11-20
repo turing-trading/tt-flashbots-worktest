@@ -54,22 +54,50 @@ def generate_dashboard() -> Dashboard:
     relay_market_share_pie = load_query("B_relay", "1_relay_market_share.sql")
     relay_market_share_ts = load_query("B_relay", "2_relay_market_share.sql")
 
-    builder_ms_blocks_pie = load_query("C_builder", "1_builder_market_share_number_of_blocks.sql")
-    builder_ms_blocks_ts = load_query("C_builder", "2_builder_market_share_number_of_blocks.sql")
-    builder_ms_profit_pie = load_query("C_builder", "3_builder_market_share_eth_profit.sql")
-    builder_ms_profit_ts = load_query("C_builder", "4_builder_market_share_eth_profit.sql")
+    builder_ms_blocks_pie = load_query(
+        "C_builder", "1_builder_market_share_number_of_blocks.sql"
+    )
+    builder_ms_blocks_ts = load_query(
+        "C_builder", "2_builder_market_share_number_of_blocks.sql"
+    )
+    builder_ms_profit_pie = load_query(
+        "C_builder", "3_builder_market_share_eth_profit.sql"
+    )
+    builder_ms_profit_ts = load_query(
+        "C_builder", "4_builder_market_share_eth_profit.sql"
+    )
 
-    total_value_dist = load_query("D_value_and_profitability", "1_total_value_distribution_percent.sql")
-    total_value_dist_2 = load_query("D_value_and_profitability", "2_total_value_distribution_percent_1.sql")
-    avg_total_value = load_query("D_value_and_profitability", "3_average_total_value.sql")
-    negative_total_value = load_query("D_value_and_profitability", "4_negative_total_value.sql")
-    proposer_vs_builder = load_query("D_value_and_profitability", "5_proposer_vs_builder_profit.sql")
-    proposer_share_per_builder = load_query("D_value_and_profitability", "6_proposer_share_per_builder.sql")
+    total_value_dist = load_query(
+        "D_value_and_profitability", "1_total_value_distribution_percent.sql"
+    )
+    total_value_dist_2 = load_query(
+        "D_value_and_profitability", "2_total_value_distribution_percent_1.sql"
+    )
+    avg_total_value = load_query(
+        "D_value_and_profitability", "3_average_total_value.sql"
+    )
+    negative_total_value = load_query(
+        "D_value_and_profitability", "4_negative_total_value.sql"
+    )
+    proposer_vs_builder = load_query(
+        "D_value_and_profitability", "5_proposer_vs_builder_profit.sql"
+    )
+    proposer_share_per_builder = load_query(
+        "D_value_and_profitability", "6_proposer_share_per_builder.sql"
+    )
     overbid_dist = load_query("D_value_and_profitability", "7_overbid_distribution.sql")
-    proposer_share_total = load_query("D_value_and_profitability", "8_proposer_share_of_total_value.sql")
-    negative_blocks_mev = load_query("D_value_and_profitability", "9_negative_total_value_blocks_mev_boost.sql")
-    negative_blocks_vanilla = load_query("D_value_and_profitability", "10_negative_total_value_blocks_vanilla.sql")
-    negative_blocks_table = load_query("D_value_and_profitability", "11_negative_total_value_blocks.sql")
+    proposer_share_total = load_query(
+        "D_value_and_profitability", "8_proposer_share_of_total_value.sql"
+    )
+    negative_blocks_mev = load_query(
+        "D_value_and_profitability", "9_negative_total_value_blocks_mev_boost.sql"
+    )
+    negative_blocks_vanilla = load_query(
+        "D_value_and_profitability", "10_negative_total_value_blocks_vanilla.sql"
+    )
+    negative_blocks_table = load_query(
+        "D_value_and_profitability", "11_negative_total_value_blocks.sql"
+    )
 
     # Create panels
     panels = [
@@ -84,6 +112,15 @@ def generate_dashboard() -> Dashboard:
             y=general_panels_y,
             w=12,
             h=15,
+            reduce_fields="/^market_share_pct$/",
+            overrides=[
+                {
+                    "matcher": {"id": "byName", "options": "vanilla"},
+                    "properties": [
+                        {"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}
+                    ],
+                }
+            ],
         ),
         create_time_series(
             title="MEV-Boost Market Share",
@@ -94,6 +131,25 @@ def generate_dashboard() -> Dashboard:
             y=general_panels_y,
             w=12,
             h=15,
+            stacking_mode="normal",
+            transformations=[
+                {
+                    "id": "groupingToMatrix",
+                    "options": {
+                        "columnField": "block_type",
+                        "rowField": "time",
+                        "valueField": "market_share_pct",
+                    },
+                }
+            ],
+            overrides=[
+                {
+                    "matcher": {"id": "byName", "options": "vanilla"},
+                    "properties": [
+                        {"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}
+                    ],
+                }
+            ],
         ),
         # Row 2: Relay
         create_row("Relay", relay_row_y),
@@ -106,6 +162,24 @@ def generate_dashboard() -> Dashboard:
             y=relay_panels_y,
             w=12,
             h=15,
+            reduce_fields="/^market_share_pct$/",
+            transformations=[
+                {
+                    "id": "sortBy",
+                    "options": {
+                        "fields": {},
+                        "sort": [{"field": "relay"}],
+                    },
+                }
+            ],
+            overrides=[
+                {
+                    "matcher": {"id": "byName", "options": "Ultrasound"},
+                    "properties": [
+                        {"id": "color", "value": {"fixedColor": "#37872D", "mode": "fixed"}}
+                    ],
+                }
+            ],
         ),
         create_time_series(
             title="Relay Market Share",
@@ -116,6 +190,17 @@ def generate_dashboard() -> Dashboard:
             y=relay_panels_y,
             w=12,
             h=15,
+            stacking_mode="normal",
+            transformations=[
+                {
+                    "id": "groupingToMatrix",
+                    "options": {
+                        "columnField": "relay",
+                        "rowField": "time",
+                        "valueField": "market_share_pct",
+                    },
+                }
+            ],
         ),
         # Row 3: Builder
         create_row("Builder", builder_row_y),
@@ -128,6 +213,15 @@ def generate_dashboard() -> Dashboard:
             y=builder_panels_y_1,
             w=12,
             h=15,
+            reduce_fields="/^market_share_pct$/",
+            overrides=[
+                {
+                    "matcher": {"id": "byName", "options": "Titan"},
+                    "properties": [
+                        {"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}
+                    ],
+                }
+            ],
         ),
         create_time_series(
             title="Builder Market Share (Number of blocks)",
@@ -138,6 +232,17 @@ def generate_dashboard() -> Dashboard:
             y=builder_panels_y_1,
             w=12,
             h=15,
+            stacking_mode="normal",
+            transformations=[
+                {
+                    "id": "groupingToMatrix",
+                    "options": {
+                        "columnField": "builder_name",
+                        "rowField": "time",
+                        "valueField": "market_share_pct",
+                    },
+                }
+            ],
         ),
         create_pie_chart(
             title="Builder Market Share (ETH profit)",
@@ -148,6 +253,7 @@ def generate_dashboard() -> Dashboard:
             y=builder_panels_y_2,
             w=12,
             h=15,
+            reduce_fields="/^total_profit_eth$/",
         ),
         create_time_series(
             title="Builder Market Share (ETH profit)",
@@ -158,6 +264,17 @@ def generate_dashboard() -> Dashboard:
             y=builder_panels_y_2,
             w=12,
             h=15,
+            unit="none",
+            transformations=[
+                {
+                    "id": "groupingToMatrix",
+                    "options": {
+                        "columnField": "builder_name",
+                        "rowField": "time",
+                        "valueField": "total_profit_eth",
+                    },
+                }
+            ],
         ),
         # Row 4: Value and Profitability
         create_row("Value and Profitability", value_row_y),
@@ -166,10 +283,12 @@ def generate_dashboard() -> Dashboard:
             description="Distribution of block values (proposer profit) for MEV-Boost vs vanilla blocks. "
             "Reveals how MEV-Boost increases value, and how often negative or low-value blocks occur.",
             query=total_value_dist,
+            query2=total_value_dist_2,
             x=0,
             y=value_panels_y_1,
             w=12,
             h=15,
+            transformations=[{"id": "merge", "options": {}}],
         ),
         create_stat(
             title="Average Total Value",
@@ -181,6 +300,7 @@ def generate_dashboard() -> Dashboard:
             w=12,
             h=7,
             unit="currencyUSD",
+            transformations=[{"id": "transpose", "options": {}}],
         ),
         create_stat(
             title="Negative Total Value",
@@ -191,6 +311,7 @@ def generate_dashboard() -> Dashboard:
             w=12,
             h=8,
             unit="percent",
+            transformations=[{"id": "transpose", "options": {}}],
         ),
         create_pie_chart(
             title="Proposer vs. Builder Profit",
@@ -202,6 +323,26 @@ def generate_dashboard() -> Dashboard:
             w=12,
             h=15,
             unit="percentunit",
+            overrides=[
+                {
+                    "matcher": {"id": "byName", "options": "Proposer Profit"},
+                    "properties": [
+                        {"id": "color", "value": {"fixedColor": "orange", "mode": "fixed"}}
+                    ],
+                },
+                {
+                    "matcher": {"id": "byName", "options": "Builder Profit"},
+                    "properties": [
+                        {"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}
+                    ],
+                },
+                {
+                    "matcher": {"id": "byName", "options": "Relay Fee"},
+                    "properties": [
+                        {"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}
+                    ],
+                },
+            ],
         ),
         create_time_series(
             title="Proposer share (per builder)",
@@ -213,6 +354,17 @@ def generate_dashboard() -> Dashboard:
             h=15,
             interval="1h",
             max_data_points=100,
+            spanNulls=True,
+            transformations=[
+                {
+                    "id": "groupingToMatrix",
+                    "options": {
+                        "columnField": "builder_name",
+                        "rowField": "time",
+                        "valueField": "proposer_profit_pct",
+                    },
+                }
+            ],
         ),
         create_bar_chart(
             title="Overbid Distribution",
