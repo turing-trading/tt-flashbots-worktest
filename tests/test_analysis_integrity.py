@@ -163,9 +163,7 @@ async def test_non_nullable_defaults(async_session: AsyncSession) -> None:
     stmt = (
         select(func.count())
         .select_from(AnalysisPBSDB)
-        .where(
-            (AnalysisPBSDB.builder_name.is_(None)) | (AnalysisPBSDB.builder_name == "")
-        )
+        .where((AnalysisPBSDB.builder_name.is_(None)) | (~AnalysisPBSDB.builder_name))
     )
     result = await async_session.execute(stmt)
     assert result.scalar() == 0, "Found NULL or empty builder_name"

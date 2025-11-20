@@ -24,3 +24,11 @@ class RelaysPayloads(BaseModel):
     value: int
     block_number: int
     num_tx: int
+
+
+class RelaysPayloadsCheckpoints(BaseModel):
+    """Relay payloads checkpoints."""
+
+    relay: str
+    from_slot: int
+    to_slot: int

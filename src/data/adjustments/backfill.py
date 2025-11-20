@@ -2,8 +2,6 @@
 
 from datetime import UTC, datetime
 
-import logging
-
 from typing import TYPE_CHECKING, Any
 
 import asyncio
@@ -30,12 +28,6 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
-# Configure logging
-logging.basicConfig(
-    level=logging.WARNING,  # Reduce noise from httpx
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
 console = Console()
 
 
@@ -64,11 +56,9 @@ async def fetch_adjustment_from_api(
                 return (True, adjustments[0])
         # Success but no adjustment found
         return (True, None)
-    except httpx.HTTPError as e:
-        logger.warning(f"HTTP error fetching adjustment for slot {slot}: {e}")
+    except httpx.HTTPError:
         return (False, None)
-    except Exception as e:
-        logger.exception(f"Error fetching adjustment for slot {slot}: {e}")
+    except Exception:
         return (False, None)
 
 
@@ -155,14 +145,13 @@ async def process_batch(
 
 async def backfill_adjustments(
     limit: int | None = None,
-    skip_existing: bool = True,
     batch_size: int = 100,
 ) -> None:
     """Backfill adjustments for Ultrasound relay blocks.
 
     Args:
         limit: Maximum number of slots to process (None for all)
-        skip_existing: Skip slots that already have adjustment records (deprecated, always skipped via query)
+        batch_size: Number of slots to process per batch
     """
     console.print("[bold cyan]Starting Ultrasound adjustments backfill[/bold cyan]")
 
@@ -268,9 +257,8 @@ async def backfill_adjustments(
                 f"  Successfully processed: [green]{processed_count:,}[/green]"
             )
             console.print(f"  Adjustments found: [green]{found_adjustments:,}[/green]")
-            console.print(
-                f"  No adjustments: [yellow]{processed_count - found_adjustments:,}[/yellow]"
-            )
+            no_adj = processed_count - found_adjustments
+            console.print(f"  No adjustments: [yellow]{no_adj:,}[/yellow]")
             if api_errors > 0:
                 console.print(
                     f"  [red]API errors (will retry later): {api_errors:,}[/red]"

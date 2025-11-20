@@ -1,5 +1,6 @@
 """Pytest configuration and shared fixtures for data integrity tests."""
 
+
 import pytest
 import pytest_asyncio
 
@@ -11,6 +12,8 @@ from src.helpers.db import AsyncSessionLocal
 
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -23,7 +26,7 @@ def pytest_collection_modifyitems(config, items) -> None:
 
 
 @pytest_asyncio.fixture
-async def async_session() -> AsyncSession:
+async def async_session() -> AsyncGenerator[AsyncSession]:
     """Provide async database session for tests.
 
     Note: This uses the same database connection as the application.

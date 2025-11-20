@@ -1,6 +1,6 @@
 """Parsing utilities for common data transformations."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from typing import Any
 
@@ -35,7 +35,7 @@ def parse_hex_timestamp(hex_timestamp: str) -> datetime:
         >>> parse_hex_timestamp("0x63a1b2c3")
         datetime.datetime(2022, 12, 20, ...)
     """
-    return datetime.fromtimestamp(int(hex_timestamp, 16))
+    return datetime.fromtimestamp(int(hex_timestamp, 16), tz=UTC)
 
 
 def parse_hex_int(hex_value: str | None, default: int = 0) -> int:

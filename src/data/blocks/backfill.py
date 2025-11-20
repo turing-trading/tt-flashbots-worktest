@@ -1,10 +1,10 @@
 """Backfill Ethereum block data from AWS Public Blockchain Dataset."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import io
 import os
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import asyncio
 from asyncio import run
@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 import pandas as pd
 
+from defusedxml import ElementTree
 from dotenv import load_dotenv
 import httpx
 from rich.console import Console
@@ -30,7 +31,6 @@ from rich.progress import (
 from src.data.blocks.db import BlockCheckpoints, BlockDB
 from src.data.blocks.models import Block
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
-from src.helpers.logging import get_logger
 from src.helpers.parsers import parse_hex_int, parse_hex_timestamp, wei_to_eth
 
 
@@ -64,17 +64,18 @@ class BackfillBlocks:
             parallel_batches: Number of batch RPC requests to run in parallel
         """
         self.base_url = "https://aws-public-blockchain.s3.us-east-2.amazonaws.com"
-        self.start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+        self.start_date = (
+            datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=UTC).date()
+        )
         self.end_date = (
-            datetime.strptime(end_date, "%Y-%m-%d").date()
+            datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=UTC).date()
             if end_date
-            else datetime.now().date()
+            else datetime.now(UTC).date()
         )
         self.batch_size = batch_size
         self.eth_rpc_url = eth_rpc_url or os.getenv("ETH_RPC_URL")
         self.rpc_batch_size = rpc_batch_size
         self.parallel_batches = parallel_batches
-        self.logger = get_logger("backfill_blocks", log_level="INFO")
         self.console = Console()
 
     async def _get_completed_dates(self, session: AsyncSession) -> set[str]:
@@ -128,16 +129,9 @@ class BackfillBlocks:
             response = await client.get(list_url, timeout=30.0)
             response.raise_for_status()
 
-            # Parse XML response to extract Key
-            import xml.etree.ElementTree as ET
-
-            root = ET.fromstring(response.text)
+            root = ElementTree.fromstring(response.text)
             namespace = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
             keys = root.findall(".//s3:Key", namespace)
-
-            if not keys:
-                self.logger.warning(f"No data found for date {date}")
-                return None
 
             # Get the first (and usually only) parquet file
             parquet_key = keys[0].text
@@ -146,25 +140,18 @@ class BackfillBlocks:
 
             # Download the parquet file
             parquet_url = f"{self.base_url}/{parquet_key}"
-            self.logger.debug(f"Fetching {parquet_url}")
 
             response = await client.get(parquet_url, timeout=60.0)
             response.raise_for_status()
 
             # Read parquet from bytes
-            df = pd.read_parquet(io.BytesIO(response.content))
-            self.logger.debug(f"Fetched {len(df)} blocks for date {date}")
-
-            return df
+            return pd.read_parquet(io.BytesIO(response.content))
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                self.logger.warning(f"No data available for date {date}")
-            else:
-                self.logger.exception(f"HTTP {e.response.status_code} for date {date}: {e}")
+                pass  # No data available for this date
             return None
-        except Exception as e:
-            self.logger.exception(f"Error fetching data for date {date}: {e}")
+        except Exception:
             return None
 
     def _dataframe_to_blocks(self, df: pd.DataFrame) -> list[Block]:
@@ -172,21 +159,14 @@ class BackfillBlocks:
         blocks = []
         for _, row in df.iterrows():
             # Handle timestamp conversion
-            timestamp_val = row["timestamp"]
-            if isinstance(timestamp_val, pd.Timestamp):
-                timestamp = timestamp_val.to_pydatetime()
-            elif hasattr(timestamp_val, "to_pydatetime"):
-                timestamp = timestamp_val.to_pydatetime()  # type: ignore[union-attr]
-            else:
-                timestamp = pd.Timestamp(timestamp_val).to_pydatetime()  # type: ignore[arg-type]
+            timestamp_val = cast("pd.Timestamp", row["timestamp"])
+            timestamp = cast("datetime", pd.Timestamp(timestamp_val).to_pydatetime())
 
             # Handle base_fee_per_gas which might be NaN
             base_fee_val = row["base_fee_per_gas"]
             try:
                 base_fee_per_gas = (
-                    None
-                    if pd.isna(base_fee_val)  # type: ignore[arg-type]
-                    else float(base_fee_val)
+                    None if cast("bool", pd.isna(base_fee_val)) else float(base_fee_val)
                 )
             except TypeError, ValueError:
                 base_fee_per_gas = None
@@ -254,6 +234,9 @@ class BackfillBlocks:
 
         Returns:
             Latest block number
+
+        Raises:
+            ValueError: If ETH_RPC_URL is not configured
         """
         if not self.eth_rpc_url:
             msg = "ETH_RPC_URL must be configured to fetch missing blocks"
@@ -300,9 +283,9 @@ class BackfillBlocks:
             List of missing block numbers
         """
         # Generate expected sequence and find gaps
-        query_str = f"""
+        query_str = """
         WITH expected_blocks AS (
-            SELECT generate_series({start_block}, {end_block}) AS block_number
+            SELECT generate_series(:start_block, :end_block) AS block_number
         )
         SELECT e.block_number
         FROM expected_blocks e
@@ -311,7 +294,9 @@ class BackfillBlocks:
         ORDER BY e.block_number DESC
         """
 
-        result = await session.execute(text(query_str))
+        result = await session.execute(
+            text(query_str), {"start_block": start_block, "end_block": end_block}
+        )
         return [row[0] for row in result.fetchall()]
 
     async def _fetch_block_via_rpc(
@@ -325,6 +310,9 @@ class BackfillBlocks:
 
         Returns:
             Block model or None if failed
+
+        Raises:
+            ValueError: If ETH_RPC_URL is not configured
         """
         if not self.eth_rpc_url:
             msg = "ETH_RPC_URL must be configured"
@@ -343,7 +331,6 @@ class BackfillBlocks:
             result = response.json()
 
             if "result" not in result or result["result"] is None:
-                self.logger.warning(f"Block {block_number} not found via RPC")
                 return None
 
             block_data = result["result"]
@@ -374,8 +361,7 @@ class BackfillBlocks:
                 ),
             )
 
-        except Exception as e:
-            self.logger.exception(f"Error fetching block {block_number} via RPC: {e}")
+        except Exception:
             return None
 
     async def _batch_fetch_blocks(
@@ -391,6 +377,9 @@ class BackfillBlocks:
 
         Returns:
             Dict mapping block_number to Block model
+
+        Raises:
+            ValueError: If ETH_RPC_URL is not configured
         """
         if not self.eth_rpc_url:
             msg = "ETH_RPC_URL must be configured"
@@ -410,10 +399,6 @@ class BackfillBlocks:
             })
 
         try:
-            self.logger.debug(
-                f"Fetching {len(block_numbers)} blocks (blocks {block_numbers[0]} to {block_numbers[-1]})"
-            )
-
             response = await client.post(
                 self.eth_rpc_url,
                 json=batch_payload,
@@ -430,7 +415,6 @@ class BackfillBlocks:
                 block_number = block_numbers[idx]
 
                 if "result" not in result or result["result"] is None:
-                    self.logger.warning(f"Block {block_number} not found via RPC")
                     continue
 
                 block_data = result["result"]
@@ -463,14 +447,12 @@ class BackfillBlocks:
                     )
                     block_map[block_number] = block
 
-                except Exception as e:
-                    self.logger.exception(f"Error parsing block {block_number}: {e}")
+                except httpx.HTTPStatusError:
                     continue
 
             return block_map
 
-        except Exception as e:
-            self.logger.exception(f"Error in batch block request: {e}")
+        except Exception:
             # Return empty dict on error
             return {}
 
@@ -526,10 +508,12 @@ class BackfillBlocks:
                     fetched_count += len(blocks_to_store)
 
                     # Update progress
+                    desc = (
+                        f"Fetching missing blocks via RPC "
+                        f"({fetched_count}/{len(missing_blocks)})"
+                    )
                     progress.update(
-                        task_id,
-                        advance=len(blocks_to_store),
-                        description=f"Fetching missing blocks via RPC ({fetched_count}/{len(missing_blocks)})",
+                        task_id, advance=len(blocks_to_store), description=desc
                     )
 
         return fetched_count
@@ -585,7 +569,8 @@ class BackfillBlocks:
         """
         if not self.eth_rpc_url:
             self.console.print(
-                "[yellow]ETH_RPC_URL not configured - skipping missing blocks check[/yellow]"
+                "[yellow]ETH_RPC_URL not configured - "
+                "skipping missing blocks check[/yellow]"
             )
             return
 
@@ -596,7 +581,8 @@ class BackfillBlocks:
             f"[cyan]RPC batch size: {self.rpc_batch_size} blocks/request[/cyan]"
         )
         self.console.print(
-            f"[cyan]Parallel batches: {self.parallel_batches} concurrent requests[/cyan]\n"
+            f"[cyan]Parallel batches: {self.parallel_batches} "
+            "concurrent requests[/cyan]\n"
         )
 
         async with httpx.AsyncClient() as client:
@@ -615,7 +601,8 @@ class BackfillBlocks:
 
                 if min_block == 0:
                     self.console.print(
-                        "[yellow]No blocks in database - run date backfill first[/yellow]"
+                        "[yellow]No blocks in database - "
+                        "run date backfill first[/yellow]"
                     )
                     return
 
@@ -625,7 +612,8 @@ class BackfillBlocks:
 
                 # Find missing blocks in range
                 self.console.print(
-                    f"[cyan]Scanning for gaps between {min_block:,} and {block_end:,}...[/cyan]"
+                    f"[cyan]Scanning for gaps between {min_block:,} "
+                    f"and {block_end:,}...[/cyan]"
                 )
                 missing_blocks = await self._find_missing_blocks(
                     session, min_block, block_end
@@ -633,7 +621,8 @@ class BackfillBlocks:
 
                 if not missing_blocks:
                     self.console.print(
-                        "[green]✓ No missing blocks found - database is complete![/green]"
+                        "[green]✓ No missing blocks found - "
+                        "database is complete![/green]"
                     )
                     return
 
@@ -687,7 +676,8 @@ class BackfillBlocks:
 
         if not dates_to_process:
             self.console.print(
-                "[yellow]No new dates to process - all dates in range already completed[/yellow]"
+                "[yellow]No new dates to process - "
+                "all dates in range already completed[/yellow]"
             )
             return
 
@@ -721,13 +711,12 @@ class BackfillBlocks:
         with progress:
             task_id = progress.add_task("Processing dates", total=total_days)
 
-            async with httpx.AsyncClient() as client:
-                async with AsyncSessionLocal() as session:
-                    for date_str in dates_to_process[::-1]:
-                        blocks_count = await self._backfill_date(
-                            client, session, date_str, progress, task_id
-                        )
-                        total_blocks += blocks_count
+            async with httpx.AsyncClient() as client, AsyncSessionLocal() as session:
+                for date_str in dates_to_process[::-1]:
+                    blocks_count = await self._backfill_date(
+                        client, session, date_str, progress, task_id
+                    )
+                    total_blocks += blocks_count
 
         # self.console.print(
         #     f"\n[bold green]✓ Backfill completed[/bold green] - "
@@ -748,6 +737,7 @@ if __name__ == "__main__":
 
     # Run both backfills
     async def main() -> None:
+        """Run both AWS S3 backfill and missing blocks RPC backfill."""
         # First, backfill from AWS S3 (historical data by date)
         await backfill.run()
 

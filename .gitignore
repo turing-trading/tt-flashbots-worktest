@@ -64,6 +64,7 @@ output/
 *.csv
 *.json
 !deploy/grafana/dashboard.json
+!pyrightconfig.json
 *.parquet
 *.feather
 *.pickle

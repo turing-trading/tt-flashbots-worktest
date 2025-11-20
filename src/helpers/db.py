@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from pydantic import BaseModel
 
 
@@ -76,41 +78,65 @@ AsyncSessionLocal = async_sessionmaker(
 async def upsert_model[DBModelType](
     db_model_class: type[DBModelType],
     pydantic_model: BaseModel,
-    primary_key_value: Any,
     extra_fields: dict[str, Any] | None = None,
 ) -> None:
-    """Generic upsert helper using PostgreSQL INSERT ... ON CONFLICT DO UPDATE.
+    """Upsert a single model using PostgreSQL INSERT ... ON CONFLICT DO UPDATE.
+
+    This is a convenience wrapper around upsert_models for single model operations.
+
+    Args:
+        db_model_class: The SQLAlchemy model class (e.g., BlockDB, AnalysisPBSDB)
+        pydantic_model: A single Pydantic model instance with data to upsert
+        extra_fields: Additional fields not in the Pydantic model (e.g., relay name)
+
+    Examples:
+        await upsert_model(
+            db_model_class=BlockDB,
+            pydantic_model=block,
+        )
+
+    Raises:
+        ValueError: If the database model class cannot be inspected
+    """
+    await upsert_models(
+        db_model_class=db_model_class,
+        pydantic_models=[pydantic_model],
+        extra_fields=extra_fields,
+    )
+
+
+async def upsert_models[DBModelType](
+    db_model_class: type[DBModelType],
+    pydantic_models: Sequence[BaseModel],
+    extra_fields: dict[str, Any] | None = None,
+) -> None:
+    """Upsert multiple models using PostgreSQL INSERT ... ON CONFLICT DO UPDATE.
 
     This function uses atomic database-level upsert to avoid race conditions
     in concurrent environments.
 
     Args:
         db_model_class: The SQLAlchemy model class (e.g., BlockDB, AnalysisPBSDB)
-        pydantic_model: The Pydantic model instance with data to upsert
-        primary_key_value: The primary key value (or tuple for composite keys)
+        pydantic_models: List of Pydantic model instances with data to upsert
         extra_fields: Additional fields not in the Pydantic model (e.g., relay name)
 
     Examples:
-        # Single primary key
-        await upsert_model(
-            db_model_class=AnalysisPBSDB,
-            pydantic_model=analysis,
-            primary_key_value=analysis.block_number,
+        await upsert_models(
+            db_model_class=BlockDB,
+            pydantic_models=[block1, block2, block3],
         )
 
-        # Composite primary key with extra fields
-        await upsert_model(
-            db_model_class=RelaysPayloadsDB,
-            pydantic_model=payload,
-            primary_key_value=(payload.slot, relay),
-            extra_fields={"relay": relay},
-        )
+    Raises:
+        ValueError: If the database model class cannot be inspected
     """
     async with AsyncSessionLocal() as session:
         # Prepare data for insert
-        data = pydantic_model.model_dump()
+        data = [model.model_dump() for model in pydantic_models]
+
+        # Add extra fields to each item if provided
         if extra_fields:
-            data.update(extra_fields)
+            for item in data:
+                item.update(extra_fields)
 
         # Get primary key column names using SQLAlchemy inspection
         mapper = inspect(db_model_class)
@@ -119,12 +145,18 @@ async def upsert_model[DBModelType](
             raise ValueError(msg)
         pk_columns = [col.name for col in mapper.primary_key]
 
+        # Get all column names from the first data item
+        if not data:
+            return
+
+        all_columns = set(data[0].keys())
+
         # Create INSERT statement with ON CONFLICT DO UPDATE
         stmt = pg_insert(db_model_class).values(data)
 
         # Build the update dict (all columns except primary keys)
         update_dict = {
-            col: stmt.excluded[col] for col in data if col not in pk_columns
+            col: stmt.excluded[col] for col in all_columns if col not in pk_columns
         }
 
         # Apply ON CONFLICT DO UPDATE

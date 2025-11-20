@@ -27,9 +27,9 @@ class AnalysisPBSV3DB(Base):
     proposer_subsidy = Column(
         Float, nullable=False, default=0.0
     )  # ETH (converted from Wei)
-    total_value = Column(
-        Float, nullable=False, default=0.0, index=True
-    )  # builder_balance_increase + proposer_subsidy + relay_fee + builder_extra_transfers
+    total_value = Column(Float, nullable=False, default=0.0, index=True)
+    # builder_balance_increase + proposer_subsidy + relay_fee
+    # + builder_extra_transfers
     is_block_vanilla = Column(
         Boolean, nullable=False, default=False, index=True
     )  # True if no relays

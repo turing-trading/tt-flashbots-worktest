@@ -23,7 +23,7 @@ class TestParsers:
 
     def test_parse_hex_int_empty_string(self) -> None:
         """Test parsing empty string raises ValueError."""
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Invalid hex string"):
             parse_hex_int("")
 
     def test_parse_hex_timestamp_valid(self) -> None:

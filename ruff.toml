@@ -154,8 +154,6 @@ section-order = [
     "dataframes",
     "third-party",
     "first-party",
-    "turing-trading-blockchain",
-    "turing-trading-tools",
     "local-folder",
 ]
 split-on-trailing-comma = true

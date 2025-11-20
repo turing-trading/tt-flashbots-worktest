@@ -27,11 +27,9 @@ from typing import TYPE_CHECKING, Any
 
 import asyncio
 
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-
 from dotenv import load_dotenv
 import httpx
-import websockets
+from websockets.asyncio.client import connect
 
 from src.analysis.builder_name import parse_builder_name_from_extra_data
 from src.analysis.db import AnalysisPBSV3DB
@@ -45,7 +43,7 @@ from src.data.builders.models import BuilderBalance, ExtraBuilderBalance
 from src.data.relays.constants import RELAYS
 from src.data.relays.db import RelaysPayloadsDB
 from src.data.relays.models import RelaysPayloads
-from src.helpers.db import AsyncSessionLocal, upsert_model
+from src.helpers.db import upsert_models
 from src.helpers.logging import get_logger
 from src.helpers.parsers import (
     parse_hex_block_number,
@@ -56,7 +54,7 @@ from src.helpers.parsers import (
 
 
 if TYPE_CHECKING:
-    from websockets.legacy.client import WebSocketClientProtocol
+    from websockets.asyncio.client import ClientConnection
 
 
 # Load environment variables
@@ -69,7 +67,11 @@ class LiveProcessor:
     """Unified processor for live Ethereum blocks with queue-based architecture."""
 
     def __init__(self) -> None:
-        """Initialize the live processor."""
+        """Initialize the live processor.
+
+        Raises:
+            ValueError: If ETH_WS_URL or ETH_RPC_URL environment variables are not set
+        """
         ws_url = os.getenv("ETH_WS_URL")
         rpc_url = os.getenv("ETH_RPC_URL")
 
@@ -110,10 +112,10 @@ class LiveProcessor:
 
         while not self.should_shutdown:
             try:
-                logger.info(f"Connecting to {self.ws_url}")
+                logger.info("Connecting to %s", self.ws_url)
                 self.connection_status = "Connecting"
 
-                async with websockets.connect(
+                async with connect(
                     self.ws_url,
                     ping_interval=20,
                     ping_timeout=10,
@@ -133,35 +135,37 @@ class LiveProcessor:
                     if "result" in response_data:
                         subscription_id = response_data["result"]
                         logger.info(
-                            f"Successfully subscribed to newHeads: {subscription_id}"
+                            "Successfully subscribed to newHeads: %s", subscription_id
                         )
                         self.connection_status = "Connected"
                         retry_delay = 1.0  # Reset retry delay on successful connection
 
                         # Stream blocks
-                        await self._stream_blocks(websocket)  # type: ignore
+                        await self._stream_blocks(websocket)
                     else:
-                        logger.error(f"Subscription failed: {response_data}")
+                        logger.error("Subscription failed: %s", response_data)
                         self.connection_status = "Subscription failed"
 
-            except websockets.exceptions.ConnectionClosed as e:
-                logger.warning(f"WebSocket connection closed: {e}")
+            except ConnectionError as e:
+                logger.warning("WebSocket connection closed: %s", e)
                 self.connection_status = "Disconnected"
             except Exception as e:
-                logger.exception(f"WebSocket error: {e}")
+                logger.exception("WebSocket error")
                 self.connection_status = f"Error: {str(e)[:50]}"
 
             if not self.should_shutdown:
                 # Exponential backoff
                 self.reconnect_count += 1
                 logger.info(
-                    f"Reconnecting in {retry_delay}s (attempt {self.reconnect_count})"
+                    "Reconnecting in %s s (attempt %s)",
+                    retry_delay,
+                    self.reconnect_count,
                 )
                 self.connection_status = f"Reconnecting in {retry_delay}s"
                 await asyncio.sleep(retry_delay)
                 retry_delay = min(retry_delay * 2, max_retry_delay)
 
-    async def _stream_blocks(self, websocket: WebSocketClientProtocol) -> None:
+    async def _stream_blocks(self, websocket: ClientConnection) -> None:
         """Stream block headers from WebSocket and put them in queue.
 
         Args:
@@ -181,12 +185,13 @@ class LiveProcessor:
                     # Update stats
                     self.blocks_received += 1
                     self.last_block_number = int(block_header.get("number", "0x0"), 16)
-                    self.last_block_time = datetime.now()
+                    self.last_block_time = datetime.now(UTC)
 
                     # Log block info
                     logger.info(
-                        f"New block #{self.last_block_number} "
-                        f"hash={block_header.get('hash', 'N/A')[:10]}..."
+                        "New block #%s hash=%s...",
+                        self.last_block_number,
+                        block_header.get("hash", "N/A")[:10],
                     )
 
                     # Put header in queue (non-blocking with timeout)
@@ -196,17 +201,19 @@ class LiveProcessor:
                         )
                     except TimeoutError:
                         logger.warning(
-                            f"Queue full, dropping block #{self.last_block_number}"
+                            "Queue full, dropping block #%s", self.last_block_number
                         )
 
-            except json.JSONDecodeError as e:
-                logger.exception(f"Failed to decode WebSocket message: {e}")
-            except Exception as e:
-                logger.exception(f"Error processing block header: {e}")
+            except json.JSONDecodeError:
+                logger.exception("Failed to decode WebSocket message")
+            except Exception:
+                logger.exception("Error processing block header")
 
     async def process_headers_from_queue(self) -> None:
         """Consume block headers from queue and process each one."""
         logger.info("Header queue consumer started")
+
+        task: asyncio.Task[None] | None = None
 
         while not self.should_shutdown:
             try:
@@ -214,7 +221,7 @@ class LiveProcessor:
                 header = await asyncio.wait_for(self.headers_queue.get(), timeout=1.0)
 
                 # Process this header in a separate task
-                asyncio.create_task(self._process_header(header))
+                task = asyncio.create_task(self._process_header(header))
 
                 # Mark task as done
                 self.headers_queue.task_done()
@@ -225,8 +232,10 @@ class LiveProcessor:
             except asyncio.CancelledError:
                 logger.info("Header queue consumer cancelled")
                 break
-            except Exception as e:
-                logger.exception(f"Error in queue consumer: {e}")
+            except Exception:
+                logger.exception("Error in queue consumer")
+            if task:
+                task.cancel()
 
     async def _process_header(self, header: dict[str, Any]) -> None:
         """Process a single block header through all stages.
@@ -234,17 +243,15 @@ class LiveProcessor:
         Args:
             header: Block header dictionary from newHeads.
         """
+        block_number = parse_hex_block_number(header)
         try:
-            block_number = parse_hex_block_number(header)
-            timestamp = parse_hex_timestamp(header["timestamp"])
-
             # Get miner address for later stages
             miner_address = header.get("miner", "")
 
             # Stage 1: Fetch/insert block
             block = await self._store_block(block_number)
             if not block:
-                logger.error(f"Failed to store block #{block_number}, skipping")
+                logger.error("Failed to store block #%s, skipping", block_number)
                 return
 
             # Stage 2: Fetch/insert builder balance
@@ -258,9 +265,7 @@ class LiveProcessor:
             )
 
             # Stage 4: Fetch/insert relay payloads (with smart waiting)
-            relay_data = await self._store_relay_payloads_with_retry(
-                block_number, timestamp
-            )
+            relay_data = await self._store_relay_payloads_with_retry(block_number)
 
             # Stage 5: Fetch Ultrasound adjustment if applicable
             # First extract slot from relay data
@@ -272,15 +277,14 @@ class LiveProcessor:
                 block_number,
                 block.timestamp,
                 block.extra_data,
-                miner_address,
                 balance_data,
                 relay_data,
                 extra_builder_data,
                 adjustment_data,
             )
 
-        except Exception as e:
-            logger.exception(f"Error processing block #{block_number}: {e}")
+        except Exception:
+            logger.exception("Error processing block #%s", block_number)
 
     async def _store_block(self, block_number: int) -> Block | None:
         """Fetch and store full block data from RPC.
@@ -305,7 +309,7 @@ class LiveProcessor:
             result = response.json()
 
             if "result" not in result or result["result"] is None:
-                logger.error(f"Block #{block_number} not found in RPC response")
+                logger.error("Block #%s not found in RPC response", block_number)
                 return None
 
             block_data = result["result"]
@@ -333,19 +337,18 @@ class LiveProcessor:
             )
 
             # Store in database
-            await upsert_model(
+            await upsert_models(
                 db_model_class=BlockDB,
-                pydantic_model=block,
-                primary_key_value=block.number,
+                pydantic_models=[block],
             )
 
             self.blocks_processed += 1
-            logger.info(f"Stored block #{block_number}")
+            logger.info("Stored block #%s", block_number)
 
             return block
 
-        except Exception as e:
-            logger.exception(f"Failed to store block #{block_number}: {e}")
+        except Exception:
+            logger.exception("Failed to store block #%s", block_number)
             return None
 
     async def _store_builder_balance(
@@ -362,7 +365,7 @@ class LiveProcessor:
         """
         try:
             if not miner_address:
-                logger.warning(f"No miner address for block #{block_number}")
+                logger.warning("No miner address for block #%s", block_number)
                 return None
 
             # Get balance before (at block N-1) and after (at block N)
@@ -402,30 +405,30 @@ class LiveProcessor:
             )
 
             # Store in database
-            await upsert_model(
+            await upsert_models(
                 db_model_class=BuilderBalancesDB,
-                pydantic_model=builder_balance,
-                primary_key_value=block_number,
+                pydantic_models=[builder_balance],
             )
 
             self.builders_processed += 1
             logger.info(
-                f"Stored builder balance for block #{block_number}: "
-                f"{wei_to_eth(balance_increase):.4f} ETH"
+                "Stored builder balance for block #%s: %s ETH",
+                block_number,
+                f"{wei_to_eth(balance_increase):.4f} ETH",
             )
 
             return {
                 "balance_increase": balance_increase,
             }
 
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"Failed to store builder balance for block #{block_number}: {e}"
+                "Failed to store builder balance for block #%s", block_number
             )
             return None
 
     async def _store_relay_payloads_with_retry(
-        self, block_number: int, timestamp: datetime
+        self, block_number: int
     ) -> list[dict[str, Any]]:
         """Store relay payloads with delayed retries only (no immediate fetch).
 
@@ -440,7 +443,6 @@ class LiveProcessor:
 
         Args:
             block_number: Block number.
-            timestamp: Block timestamp (unused, kept for API compatibility).
 
         Returns:
             List of relay data dictionaries.
@@ -451,7 +453,9 @@ class LiveProcessor:
 
         # Wait 5 minutes before first fetch attempt
         logger.info(
-            f"Block #{block_number}: Waiting {initial_wait_minutes}m before fetching relay data"
+            "Block #%s: Waiting %s m before fetching relay data",
+            block_number,
+            initial_wait_minutes,
         )
         await asyncio.sleep(initial_wait_minutes * 60)
 
@@ -477,21 +481,24 @@ class LiveProcessor:
 
             # Wait 1 minute before next retry
             logger.info(
-                f"Block #{block_number}: No relay data found, "
-                f"retrying in 1m (elapsed: {elapsed_minutes}m)"
+                "Block #%s: No relay data found, retrying in 1m (elapsed: %s m)",
+                block_number,
+                elapsed_minutes,
             )
             await asyncio.sleep(60)
             elapsed_minutes += 1
 
         if not relay_data:
             logger.warning(
-                f"Block #{block_number}: No relay data found after {elapsed_minutes}m of retries"
+                "Block #%s: No relay data found after %s m of retries",
+                block_number,
+                elapsed_minutes,
             )
 
         found_relays = [r["relay"] for r in relay_data] if relay_data else []
         if found_relays:
             self.relays_processed += len(found_relays)
-            logger.info(f"Stored relay payloads for block #{block_number}")
+            logger.info("Stored relay payloads for block #%s", block_number)
         return relay_data
 
     async def _store_relay_payloads(self, block_number: int) -> list[dict[str, Any]]:
@@ -522,7 +529,7 @@ class LiveProcessor:
                 relay = RELAYS[i]
                 if isinstance(result, Exception):
                     logger.debug(
-                        f"Relay {relay} error for block #{block_number}: {result}"
+                        "Relay %s error for block #%s: %s", relay, block_number, result
                     )
                     continue
 
@@ -549,27 +556,10 @@ class LiveProcessor:
                         )
 
                         # Upsert with relay name
-                        async with AsyncSessionLocal() as session:
-                            stmt = pg_insert(RelaysPayloadsDB).values(
-                                relay=relay, **payload.model_dump()
-                            )
-                            stmt = stmt.on_conflict_do_update(
-                                index_elements=["slot", "relay"],
-                                set_={
-                                    "parent_hash": stmt.excluded.parent_hash,
-                                    "block_hash": stmt.excluded.block_hash,
-                                    "builder_pubkey": stmt.excluded.builder_pubkey,
-                                    "proposer_pubkey": stmt.excluded.proposer_pubkey,
-                                    "proposer_fee_recipient": stmt.excluded.proposer_fee_recipient,
-                                    "gas_limit": stmt.excluded.gas_limit,
-                                    "gas_used": stmt.excluded.gas_used,
-                                    "value": stmt.excluded.value,
-                                    "block_number": stmt.excluded.block_number,
-                                    "num_tx": stmt.excluded.num_tx,
-                                },
-                            )
-                            await session.execute(stmt)
-                            await session.commit()
+                        await upsert_models(
+                            db_model_class=RelaysPayloadsDB,
+                            pydantic_models=[payload],
+                        )
 
                         # Track this relay data for analysis
                         relay_data_list.append({
@@ -577,21 +567,22 @@ class LiveProcessor:
                             "value": int(payload_data.get("value", 0)),
                         })
 
-                    except Exception as e:
+                    except Exception:
                         logger.exception(
-                            f"Failed to store relay payload from {relay} "
-                            f"for block #{block_number}: {e}"
+                            "Failed to store relay payload from %s for block #%s",
+                            relay,
+                            block_number,
                         )
 
             if relay_data_list:
                 self.relays_processed += 1
-                logger.info(f"Stored relay payloads for block #{block_number}")
+                logger.info("Stored relay payloads for block #%s", block_number)
 
             return relay_data_list
 
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"Failed to fetch relay payloads for block #{block_number}: {e}"
+                "Failed to fetch relay payloads for block #%s", block_number
             )
             return []
 
@@ -612,10 +603,10 @@ class LiveProcessor:
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 return None  # No data available yet
-            logger.debug(f"HTTP error fetching {relay}: {e}")
+            logger.debug("HTTP error fetching %s: %s", relay, e)
             return None
         except Exception as e:
-            logger.debug(f"Error fetching {relay}: {e}")
+            logger.debug("Error fetching %s: %s", relay, e)
             return None
 
     async def _fetch_extra_builder_balances(
@@ -674,10 +665,9 @@ class LiveProcessor:
                 )
 
                 # Store in database
-                await upsert_model(
+                await upsert_models(
                     db_model_class=ExtraBuilderBalanceDB,
-                    pydantic_model=extra_builder_balance,
-                    primary_key_value=(block_number, builder_address),
+                    pydantic_models=[extra_builder_balance],
                 )
 
                 balance_data.append({
@@ -686,13 +676,16 @@ class LiveProcessor:
                 })
 
             logger.info(
-                f"Stored {len(balance_data)} extra builder balances for block #{block_number}"
+                "Stored %s extra builder balances for block #%s",
+                len(balance_data),
+                block_number,
             )
             return balance_data
 
-        except Exception as e:
+        except Exception:
             logger.exception(
-                f"Failed to fetch/store extra builder balances for block #{block_number}: {e}"
+                "Failed to fetch/store extra builder balances for block #%s",
+                block_number,
             )
             return []
 
@@ -740,6 +733,7 @@ class LiveProcessor:
                     fetched_at=now,
                     has_adjustment=False,
                 )
+                delta = None
             else:
                 # Parse adjustment data
                 adjusted_value = adjustment_data.get("adjusted_value")
@@ -761,28 +755,28 @@ class LiveProcessor:
                 )
 
             # Store in database
-            await upsert_model(
+            await upsert_models(
                 db_model_class=UltrasoundAdjustmentDB,
-                pydantic_model=adjustment_record,
-                primary_key_value=slot,
+                pydantic_models=[adjustment_record],
             )
 
             # Return relay fee if available
             if adjustment_data and delta is not None:
                 delta_value = int(delta)
                 logger.info(
-                    f"Stored Ultrasound adjustment for slot {slot}: "
-                    f"delta={wei_to_eth(delta_value):.6f} ETH"
+                    "Stored Ultrasound adjustment for slot %s: delta=%s ETH",
+                    slot,
+                    wei_to_eth(delta_value),
                 )
                 return {"delta": delta_value}
 
             return None
 
         except httpx.HTTPError as e:
-            logger.debug(f"HTTP error fetching adjustment for slot {slot}: {e}")
+            logger.debug("HTTP error fetching adjustment for slot %s: %s", slot, e)
             return None
-        except Exception as e:
-            logger.exception(f"Error fetching adjustment for slot {slot}: {e}")
+        except Exception:
+            logger.exception("Error fetching adjustment for slot %s", slot)
             return None
 
     async def _store_analysis_simple(
@@ -790,7 +784,6 @@ class LiveProcessor:
         block_number: int,
         block_timestamp: datetime,
         extra_data: str,
-        miner_address: str,
         balance_data: dict[str, Any] | None,
         relay_data: list[dict[str, Any]],
         extra_builder_data: list[dict[str, Any]],
@@ -804,7 +797,6 @@ class LiveProcessor:
             block_number: Block number.
             block_timestamp: Block timestamp.
             extra_data: Block extra_data for builder name parsing.
-            miner_address: The builder/miner address.
             balance_data: Balance data from builder step.
             relay_data: Relay data from relay step.
             extra_builder_data: Extra builder balance data.
@@ -878,20 +870,21 @@ class LiveProcessor:
             )
 
             # Store in database
-            await upsert_model(
+            await upsert_models(
                 db_model_class=AnalysisPBSV3DB,
-                pydantic_model=analysis,
-                primary_key_value=analysis.block_number,
+                pydantic_models=[analysis],
             )
 
             self.analysis_processed += 1
             logger.info(
-                f"Stored PBS analysis V3 for block #{block_number} "
-                f"(builder: {builder_name}, slot: {slot})"
+                "Stored PBS analysis V3 for block #%s (builder: %s, slot: %s)",
+                block_number,
+                builder_name,
+                slot,
             )
 
-        except Exception as e:
-            logger.exception(f"Failed to store analysis for block #{block_number}: {e}")
+        except Exception:
+            logger.exception("Failed to store analysis for block #%s", block_number)
 
     def shutdown(self) -> None:
         """Gracefully shutdown the processor."""
@@ -935,8 +928,8 @@ async def main() -> None:
         await processor.run()
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt, exiting...")
-    except Exception as e:
-        logger.exception(f"Fatal error: {e}")
+    except Exception:
+        logger.exception("Fatal error")
         sys.exit(1)
 
 

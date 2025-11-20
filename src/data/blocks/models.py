@@ -1,6 +1,5 @@
 """Pydantic models for Ethereum blocks."""
 
-
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
