@@ -1,3 +1,9 @@
+-- Total Value Distribution (percent)
+-- Row: Value and Profitability
+-- Distribution of block values (proposer profit) for MEV-Boost vs vanilla blocks.
+-- Reveals how MEV-Boost increases value, and how often negative or low-value blocks occur.
+--
+
 -- Total Value Histogram using TimescaleDB histogram() hyperfunction
 -- ---------------------------------------------------------------
 -- Histogram shows the distribution of:
@@ -34,11 +40,11 @@ histogram_data AS (
     MAX(c.hist_min) AS hist_min,
     MAX(c.hist_max) AS hist_max,
     MAX(c.hist_nbuckets) AS hist_nbuckets
-    FROM analysis_pbs_v2
+    FROM analysis_pbs_v3
     CROSS JOIN config c
     WHERE
         $__timeFilter(block_timestamp)
-        AND NOT is_block_vanilla
+        AND is_block_vanilla
     GROUP BY c.hist_min, c.hist_max, c.hist_nbuckets
 ),
 
@@ -90,9 +96,9 @@ total_count AS (
 
 SELECT
     ROUND(bc.bucket_min::numeric, 6) AS bucket_min,
-    bc.block_count
+    -- bc.block_count
     -- Uncomment to add percentages:
-    -- , ROUND((bc.block_count::numeric / tc.total * 100), 3) AS percentage
+    ROUND((bc.block_count::numeric / tc.total * 100), 3) AS vanilla
 FROM bucket_counts bc
 CROSS JOIN total_count tc
 ORDER BY bc.bucket_min;

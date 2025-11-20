@@ -1,3 +1,9 @@
+-- Builder Market Share (Number of blocks)
+-- Row: Builder
+-- Shows block-production trends over time for each builder.
+-- Useful for identifying new entrants, growth/decline in builder influence, and network events affecting builder activity.
+--
+
 -- Builder Market Share (Rolling Window)
 -- Calculate the fraction of blocks produced by each builder over time
 --
@@ -39,7 +45,7 @@ WITH builder_counts AS (
         $__timeGroup(block_timestamp, $__interval) as time,
         builder_name as builder_name,
         COUNT(*) as blocks_built
-    FROM analysis_pbs_v2
+    FROM analysis_pbs_v3
     WHERE
         $__timeFilter(block_timestamp)
         AND NOT is_block_vanilla

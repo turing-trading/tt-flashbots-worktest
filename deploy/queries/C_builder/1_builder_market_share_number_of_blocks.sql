@@ -1,3 +1,9 @@
+-- Builder Market Share (Number of blocks)
+-- Row: Builder
+-- Breakdown of which builders are producing the most blocks.
+-- Highlights dominant builders and overall builder-level competition.
+--
+
 -- Builder Market Share
 -- Calculate the fraction of blocks produced by each builder
 --
@@ -18,7 +24,7 @@ WITH builder_counts AS (
     SELECT
         builder_name as builder_name,
         COUNT(*) as blocks_built
-    FROM analysis_pbs_v2
+    FROM analysis_pbs_v3
     WHERE
         $__timeFilter(block_timestamp)
         AND NOT is_block_vanilla
@@ -54,7 +60,7 @@ total_blocks AS (
 )
 SELECT
     ac.builder_name,
-    ac.blocks_built,
+    --ac.blocks_built,
     ROUND((ac.blocks_built::numeric / tb.total * 100), 2) as market_share_pct
 FROM aggregated_counts ac
 CROSS JOIN total_blocks tb

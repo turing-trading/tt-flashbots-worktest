@@ -1,3 +1,8 @@
+-- Negative Total Value
+-- Row: Value and Profitability
+-- Shows the percentage of blocks with negative value for MEV-Boost and vanilla.
+--
+
 -- Negative Blocks Percentage by Block Type
 -- Calculate the percentage of blocks with negative total value by block type
 --
@@ -31,16 +36,16 @@ WITH block_stats AS (
         COUNT(*) FILTER (WHERE total_value < 0) as negative_blocks,
         COUNT(*) as total_blocks,
         SUM(ABS(total_value)) FILTER (WHERE total_value < 0) as total_negative_value_eth
-    FROM analysis_pbs_v2
+    FROM analysis_pbs_v3
     WHERE
         $__timeFilter(block_timestamp)
     GROUP BY is_block_vanilla
 )
 SELECT
     block_type,
-    negative_blocks,
-    total_blocks,
-    ROUND((negative_blocks::numeric / NULLIF(total_blocks, 0) * 100), 2) as negative_pct,
-    ROUND(total_negative_value_eth::numeric, 4) as total_negative_value_eth
+    -- negative_blocks,
+    -- total_blocks,
+    ROUND((negative_blocks::numeric / NULLIF(total_blocks, 0) * 100), 2) as negative_pct
+    -- ROUND(total_negative_value_eth::numeric, 4) as total_negative_value_eth
 FROM block_stats
-ORDER BY negative_pct DESC;
+ORDER BY block_type ASC;

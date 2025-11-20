@@ -1,3 +1,9 @@
+-- MEV-Boost Market Share
+-- Row: General
+-- Tracks how the share of MEV-Boost blocks changes over time.
+-- Useful for spotting shifts in relay adoption, outages, or network-wide MEV dynamics.
+--
+
 -- MEV-Boost Market Share (Rolling Window)
 -- Show the fraction of blocks that use MEV-Boost vs vanilla blocks over time
 --
@@ -41,7 +47,7 @@ WITH block_types AS (
             WHEN is_block_vanilla THEN 'vanilla'
             ELSE 'mev_boost'
         END as block_type
-    FROM analysis_pbs_v2
+    FROM analysis_pbs_v3
     WHERE
         $__timeFilter(block_timestamp)
 ),
@@ -63,7 +69,7 @@ total_per_time AS (
 SELECT
     bc.time,
     bc.block_type,
-    bc.block_count,
+    --bc.block_count,
     ROUND((bc.block_count::numeric / tpt.total * 100), 2) as market_share_pct
 FROM block_counts bc
 JOIN total_per_time tpt ON bc.time = tpt.time
