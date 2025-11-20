@@ -7,24 +7,25 @@
 -- Proposer vs Builder Profit Comparison
 -- Compare total profits between proposers and builders
 --
--- This query aggregates:
--- - Proposer profit: Sum of proposer_subsidy (payment from builder to proposer)
--- - Builder profit: builder_balance_increase + builder_extra_transfers (only when builder_balance_increase < 0)
---   - builder_balance_increase: Direct balance increase of the builder address
---   - builder_extra_transfers: Additional transfers from known builder addresses (e.g., BuilderNet refunds)
---     Only added when builder_balance_increase is negative (loss scenario)
--- - Relay fee: Sum of relay_fee (payments to relays)
+-- This query shows the profit distribution across MEV participants:
+-- - Proposer profit: proposer_subsidy (payment from builder to proposer)
+-- - Builder profit: total_value - proposer_subsidy - relay_fee
+-- - Relay fee: relay_fee (payments to relays)
+--
+-- The total_value field already includes the correct logic for builder_extra_transfers:
+-- - builder_extra_transfers are only included when total_value would otherwise be negative
+-- - This represents refunds/adjustments from known builder addresses (e.g., BuilderNet)
 --
 -- Only counts MEV-Boost blocks (where relays is not NULL).
 -- Vanilla blocks (self-built by proposers) are excluded.
 --
--- The percentages show the profit distribution across all MEV participants.
+-- The percentages show the profit distribution across all MEV participants and sum to ~100%.
 --
 
 SELECT
     AVG(proposer_subsidy/total_value) as "Proposer Profit",
-    AVG((builder_balance_increase + CASE WHEN builder_balance_increase < 0 THEN COALESCE(builder_extra_transfers, 0) ELSE 0 END)/total_value) as "Builder Profit",
-    AVG(relay_fee/total_value) as "Relay Fee"
+    AVG((total_value - proposer_subsidy - COALESCE(relay_fee, 0))/total_value) as "Builder Profit",
+    AVG(COALESCE(relay_fee, 0)/total_value) as "Relay Fee"
 FROM analysis_pbs_v3
 WHERE
     $__timeFilter(block_timestamp)

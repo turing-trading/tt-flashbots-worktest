@@ -1,4 +1,59 @@
 {
+    "__inputs": [
+        {
+            "name": "DS_TIMESCALEDB_- FLASHBOTS",
+            "label": "TimescaleDB - Flashbots",
+            "description": "",
+            "type": "datasource",
+            "pluginId": "grafana-postgresql-datasource",
+            "pluginName": "PostgreSQL"
+        }
+    ],
+    "__elements": {},
+    "__requires": [
+        {
+            "type": "panel",
+            "id": "barchart",
+            "name": "Bar chart",
+            "version": ""
+        },
+        {
+            "type": "grafana",
+            "id": "grafana",
+            "name": "Grafana",
+            "version": "12.3.0"
+        },
+        {
+            "type": "datasource",
+            "id": "grafana-postgresql-datasource",
+            "name": "PostgreSQL",
+            "version": "12.3.0"
+        },
+        {
+            "type": "panel",
+            "id": "piechart",
+            "name": "Pie chart",
+            "version": ""
+        },
+        {
+            "type": "panel",
+            "id": "stat",
+            "name": "Stat",
+            "version": ""
+        },
+        {
+            "type": "panel",
+            "id": "table",
+            "name": "Table",
+            "version": ""
+        },
+        {
+            "type": "panel",
+            "id": "timeseries",
+            "name": "Time series",
+            "version": ""
+        }
+    ],
     "annotations": {
         "list": [
             {
@@ -24,7 +79,6 @@
     "editable": true,
     "fiscalYearStartMonth": 0,
     "graphTooltip": 0,
-    "id": 0,
     "links": [],
     "panels": [
         {
@@ -43,7 +97,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Shows the percentage of Ethereum blocks built through MEV-Boost vs. vanilla blocks.\nHigh MEV-Boost share indicates strong builder-relay ecosystem usage and higher proposer rewards.",
             "fieldConfig": {
@@ -129,7 +183,7 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
@@ -161,7 +215,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Tracks how the share of MEV-Boost blocks changes over time.\nUseful for spotting shifts in relay adoption, outages, or network-wide MEV dynamics.",
             "fieldConfig": {
@@ -290,7 +344,7 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
@@ -345,7 +399,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Displays each relay’s share of delivered blocks.\nHelps identify dominant relays and diversification across the relay ecosystem.",
             "fieldConfig": {
@@ -415,7 +469,7 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
@@ -460,7 +514,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Shows the relative performance and activity of relays over time.\nReveals reliability issues, relay churn, or surges in usage by builders or validators.",
             "fieldConfig": {
@@ -549,7 +603,7 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
@@ -604,7 +658,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Breakdown of which builders are producing the most blocks.\nHighlights dominant builders and overall builder-level competition.",
             "fieldConfig": {
@@ -676,7 +730,7 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
@@ -708,7 +762,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Shows block-production trends over time for each builder.\nUseful for identifying new entrants, growth/decline in builder influence, and network events affecting builder activity.",
             "fieldConfig": {
@@ -796,7 +850,7 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
@@ -838,7 +892,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Distribution of total MEV/ETH profit captured by each builder.\nShows not just who produces blocks—but who extracts the most value.",
             "fieldConfig": {
@@ -916,12 +970,12 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
                     "rawQuery": true,
-                    "rawSql": "-- Builder Profit\n-- Show a ranking of builders sorted by their onchain profit\n--\n-- The builder's onchain profit is calculated as:\n-- 1. builder_balance_increase: Balance difference before and after the block\n-- 2. builder_extra_transfers: Additional transfers from known builder addresses\n--    (e.g., BuilderNet refund addresses)\n--\n-- Total profit = builder_balance_increase + builder_extra_transfers\n--\n-- Only counts MEV-Boost blocks (where relays is not NULL).\n-- Vanilla blocks (self-built by proposers) are excluded.\n-- Top 9 builders are shown individually, rest grouped as \"Others\"\n--\n-- Variables:\n-- - $__timeFilter(block_timestamp): Grafana time range filter\n--\n-- Returns:\n-- - builder_name: Name of the builder (or \"Others\")\n-- - total_profit_eth: Total profit in ETH (including extra transfers)\n-- - builder_balance_eth: Direct builder balance increase\n-- - extra_transfers_eth: Additional builder transfers\n-- - avg_profit_eth: Average profit per block in ETH\n-- - block_count: Number of MEV-Boost blocks built\n-- - profit_rank: Ranking by total profit\n\nWITH builder_profits AS (\n    SELECT\n        builder_name,\n        SUM(builder_balance_increase) as builder_balance_eth,\n        SUM(COALESCE(builder_extra_transfers, 0)) as extra_transfers_eth,\n        SUM(builder_balance_increase + COALESCE(builder_extra_transfers, 0)) as total_profit_eth,\n        AVG(builder_balance_increase + COALESCE(builder_extra_transfers, 0)) as avg_profit_eth,\n        COUNT(*) as block_count\n    FROM analysis_pbs_v3\n    WHERE\n        $__timeFilter(block_timestamp)\n        AND NOT is_block_vanilla\n    GROUP BY builder_name\n),\ntop_builders AS (\n    SELECT builder_name\n    FROM builder_profits\n    WHERE builder_name != 'unknown'\n    ORDER BY total_profit_eth DESC\n    LIMIT 9\n),\ncategorized_profits AS (\n    SELECT\n        CASE\n            WHEN bp.builder_name IN (SELECT builder_name FROM top_builders) THEN bp.builder_name\n            ELSE 'Others'\n        END as builder_name,\n        bp.builder_balance_eth,\n        bp.extra_transfers_eth,\n        bp.total_profit_eth,\n        bp.avg_profit_eth,\n        bp.block_count\n    FROM builder_profits bp\n),\naggregated_profits AS (\n    SELECT\n        builder_name,\n        SUM(builder_balance_eth) as builder_balance_eth,\n        SUM(extra_transfers_eth) as extra_transfers_eth,\n        SUM(total_profit_eth) as total_profit_eth,\n        AVG(avg_profit_eth) as avg_profit_eth,\n        SUM(block_count) as block_count\n    FROM categorized_profits\n    GROUP BY builder_name\n)\nSELECT\n    builder_name,\n    ROUND(total_profit_eth::numeric, 4) as total_profit_eth\n  --  ROUND(builder_balance_eth::numeric, 4) as builder_balance_eth,\n    --ROUND(extra_transfers_eth::numeric, 4) as extra_transfers_eth\n    --ROUND(avg_profit_eth::numeric, 4) as avg_profit_eth,\n    --block_count,\n    --RANK() OVER (ORDER BY total_profit_eth DESC) as profit_rank\nFROM aggregated_profits\nORDER BY total_profit_eth DESC;\n",
+                    "rawSql": "-- Builder Market Share (ETH profit)\n-- Row: Builder\n-- Distribution of total MEV/ETH profit captured by each builder.\n-- Shows not just who produces blocks—but who extracts the most value.\n--\n\n-- Builder Profit\n-- Show a ranking of builders sorted by their onchain profit\n--\n-- Builder profit is derived from the pre-calculated total_value field:\n-- builder_profit = total_value - proposer_subsidy - relay_fee\n--\n-- The total_value field already includes the correct logic for builder_extra_transfers:\n-- - builder_extra_transfers are only included when total_value would otherwise be negative\n-- - This represents refunds/adjustments from known builder addresses (e.g., BuilderNet)\n--\n-- Only counts MEV-Boost blocks (where relays is not NULL).\n-- Vanilla blocks (self-built by proposers) are excluded.\n-- Top 9 builders are shown individually, rest grouped as \"Others\"\n--\n-- Variables:\n-- - $__timeFilter(block_timestamp): Grafana time range filter\n--\n-- Returns:\n-- - builder_name: Name of the builder (or \"Others\")\n-- - total_profit_eth: Total builder profit in ETH\n-- - avg_profit_eth: Average profit per block in ETH\n-- - block_count: Number of MEV-Boost blocks built\n\nWITH builder_profits AS (\n    SELECT\n        builder_name,\n        SUM(total_value - proposer_subsidy - COALESCE(relay_fee, 0)) as total_profit_eth,\n        AVG(total_value - proposer_subsidy - COALESCE(relay_fee, 0)) as avg_profit_eth,\n        COUNT(*) as block_count\n    FROM analysis_pbs_v3\n    WHERE\n        $__timeFilter(block_timestamp)\n        AND NOT is_block_vanilla\n    GROUP BY builder_name\n),\ntop_builders AS (\n    SELECT builder_name\n    FROM builder_profits\n    WHERE builder_name != 'unknown'\n    ORDER BY total_profit_eth DESC\n    LIMIT 9\n),\ncategorized_profits AS (\n    SELECT\n        CASE\n            WHEN bp.builder_name IN (SELECT builder_name FROM top_builders) THEN bp.builder_name\n            ELSE 'Others'\n        END as builder_name,\n        bp.total_profit_eth,\n        bp.avg_profit_eth,\n        bp.block_count\n    FROM builder_profits bp\n),\naggregated_profits AS (\n    SELECT\n        builder_name,\n        SUM(total_profit_eth) as total_profit_eth,\n        AVG(avg_profit_eth) as avg_profit_eth,\n        SUM(block_count) as block_count\n    FROM categorized_profits\n    GROUP BY builder_name\n)\nSELECT\n    builder_name,\n    ROUND(total_profit_eth::numeric, 4) as total_profit_eth\n    --ROUND(avg_profit_eth::numeric, 4) as avg_profit_eth,\n    --block_count,\n    --RANK() OVER (ORDER BY total_profit_eth DESC) as profit_rank\nFROM aggregated_profits\nORDER BY total_profit_eth DESC;\n",
                     "refId": "A",
                     "sql": {
                         "columns": [
@@ -948,7 +1002,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Tracks builder profitability over time.\nProfit spikes often correlate with MEV opportunities (liquidations, arbitrage, mempool spikes).",
             "fieldConfig": {
@@ -1064,12 +1118,12 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
                     "rawQuery": true,
-                    "rawSql": "-- Builder Profit (Rolling Window)\n-- Show builder profit over time with rankings\n--\n-- The builder's onchain profit is calculated as:\n-- 1. builder_balance_increase: Balance difference before and after the block\n-- 2. builder_extra_transfers: Additional transfers from known builder addresses\n--    (e.g., BuilderNet refund addresses)\n--\n-- Total profit = builder_balance_increase + builder_extra_transfers\n-- This shows how builder profits evolve over time.\n--\n-- Only counts MEV-Boost blocks (where relays is not NULL).\n-- Vanilla blocks (self-built by proposers) are excluded.\n-- Top 9 builders are shown individually, rest grouped as \"Others\"\n--\n-- Variables:\n-- - $__timeFilter(block_timestamp): Grafana time range filter\n-- - $__timeGroup(block_timestamp, '1h'): Grafana time grouping (e.g., '1h', '1d', '1w')\n--\n-- Returns:\n-- - time: Time bucket for the rolling window\n-- - builder_name: Name of the builder (or \"Others\")\n-- - total_profit_eth: Total profit in ETH for this time bucket (including extra transfers)\n-- - builder_balance_eth: Direct builder balance increase for this time bucket\n-- - extra_transfers_eth: Additional builder transfers for this time bucket\n-- - avg_profit_eth: Average profit per block in ETH for this time bucket\n-- - block_count: Number of MEV-Boost blocks built in this time bucket\n--\n-- Usage in Grafana (Step-by-Step):\n-- 1. Set Format as: Time series\n-- 2. For the $__timeGroup interval, use: $__interval or a fixed value like '1h', '6h', '1d'\n-- 3. In the Transform tab, add: \"Partition by values\"\n-- 4. Configure the transformation:\n--    - Field: Select \"builder_name\" (this is the column to split by)\n--    - Keep fields: Select \"time\" and \"total_profit_eth\" (or \"avg_profit_eth\")\n-- 5. Each builder will become a separate line showing their profit trend\n--\n-- Grafana Panel Configuration:\n-- - Visualization: Time series\n-- - Y-axis: Label as \"Profit (ETH)\", set unit to \"currencyUSD\" or leave as number\n-- - Legend: Show values (Total, Max, Last) to see cumulative profits\n-- - Legend mode: Table for better readability\n-- - Optional: Use \"Filter data by values\" to show only top N profitable builders\n--\n-- For Average Profit per Block:\n-- - Change \"Keep fields\" to use \"avg_profit_eth\" instead of \"total_profit_eth\"\n-- - Y-axis label: \"Average Profit per Block (ETH)\"\n--\n-- Alternative (Grafana 10+): Use \"Multi-frame time series\" transformation\n-- This automatically groups by the builder_name column without additional configuration\n\nWITH builder_profits AS (\n    SELECT\n        $__timeGroup(block_timestamp, $__interval) as time,\n        builder_name as builder_name,\n        SUM(builder_balance_increase) as builder_balance_eth,\n        SUM(COALESCE(builder_extra_transfers, 0)) as extra_transfers_eth,\n        SUM(builder_balance_increase + COALESCE(builder_extra_transfers, 0)) as total_profit_eth,\n        AVG(builder_balance_increase + COALESCE(builder_extra_transfers, 0)) as avg_profit_eth,\n        COUNT(*) as block_count\n    FROM analysis_pbs_v3\n    WHERE\n        $__timeFilter(block_timestamp)\n        AND builder_balance_increase IS NOT NULL\n        AND NOT is_block_vanilla\n\n    GROUP BY time, builder_name\n),\n-- Identify top 9 builders across the entire time range\ntop_builders AS (\n    SELECT builder_name\n    FROM (\n        SELECT\n            builder_name,\n            SUM(total_profit_eth) as total_profit\n        FROM builder_profits\n        WHERE builder_name != 'unknown'\n        GROUP BY builder_name\n        ORDER BY total_profit DESC\n        LIMIT 9\n    ) t\n),\ncategorized_profits AS (\n    SELECT\n        bp.time,\n        CASE\n            WHEN bp.builder_name IN (SELECT builder_name FROM top_builders) THEN bp.builder_name\n            ELSE 'Others'\n        END as builder_name,\n        bp.builder_balance_eth,\n        bp.extra_transfers_eth,\n        bp.total_profit_eth,\n        bp.avg_profit_eth,\n        bp.block_count\n    FROM builder_profits bp\n),\naggregated_profits AS (\n    SELECT\n        time,\n        builder_name,\n        SUM(builder_balance_eth) as builder_balance_eth,\n        SUM(extra_transfers_eth) as extra_transfers_eth,\n        SUM(total_profit_eth) as total_profit_eth,\n        AVG(avg_profit_eth) as avg_profit_eth,\n        SUM(block_count) as block_count\n    FROM categorized_profits\n    GROUP BY time, builder_name\n)\nSELECT\n    time,\n    builder_name,\n    ROUND(total_profit_eth::numeric, 4) as total_profit_eth,\n    ROUND(avg_profit_eth::numeric, 4) as avg_profit_eth,\n    block_count\nFROM aggregated_profits\nORDER BY time, total_profit_eth DESC;\n",
+                    "rawSql": "-- Builder Market Share (ETH profit)\n-- Row: Builder\n-- Tracks builder profitability over time.\n-- Profit spikes often correlate with MEV opportunities (liquidations, arbitrage, mempool spikes).\n--\n\n-- Builder Profit (Rolling Window)\n-- Show builder profit over time with rankings\n--\n-- Builder profit is derived from the pre-calculated total_value field:\n-- builder_profit = total_value - proposer_subsidy - relay_fee\n--\n-- The total_value field already includes the correct logic for builder_extra_transfers:\n-- - builder_extra_transfers are only included when total_value would otherwise be negative\n-- - This represents refunds/adjustments from known builder addresses (e.g., BuilderNet)\n--\n-- This shows how builder profits evolve over time.\n--\n-- Only counts MEV-Boost blocks (where relays is not NULL).\n-- Vanilla blocks (self-built by proposers) are excluded.\n-- Top 9 builders are shown individually, rest grouped as \"Others\"\n--\n-- Variables:\n-- - $__timeFilter(block_timestamp): Grafana time range filter\n-- - $__timeGroup(block_timestamp, '1h'): Grafana time grouping (e.g., '1h', '1d', '1w')\n--\n-- Returns:\n-- - time: Time bucket for the rolling window\n-- - builder_name: Name of the builder (or \"Others\")\n-- - total_profit_eth: Total profit in ETH for this time bucket\n-- - avg_profit_eth: Average profit per block in ETH for this time bucket\n-- - block_count: Number of MEV-Boost blocks built in this time bucket\n--\n-- Usage in Grafana (Step-by-Step):\n-- 1. Set Format as: Time series\n-- 2. For the $__timeGroup interval, use: $__interval or a fixed value like '1h', '6h', '1d'\n-- 3. In the Transform tab, add: \"Partition by values\"\n-- 4. Configure the transformation:\n--    - Field: Select \"builder_name\" (this is the column to split by)\n--    - Keep fields: Select \"time\" and \"total_profit_eth\" (or \"avg_profit_eth\")\n-- 5. Each builder will become a separate line showing their profit trend\n--\n-- Grafana Panel Configuration:\n-- - Visualization: Time series\n-- - Y-axis: Label as \"Profit (ETH)\", set unit to \"currencyUSD\" or leave as number\n-- - Legend: Show values (Total, Max, Last) to see cumulative profits\n-- - Legend mode: Table for better readability\n-- - Optional: Use \"Filter data by values\" to show only top N profitable builders\n--\n-- For Average Profit per Block:\n-- - Change \"Keep fields\" to use \"avg_profit_eth\" instead of \"total_profit_eth\"\n-- - Y-axis label: \"Average Profit per Block (ETH)\"\n--\n-- Alternative (Grafana 10+): Use \"Multi-frame time series\" transformation\n-- This automatically groups by the builder_name column without additional configuration\n\nWITH builder_profits AS (\n    SELECT\n        $__timeGroup(block_timestamp, $__interval) as time,\n        builder_name as builder_name,\n        SUM(total_value - proposer_subsidy - COALESCE(relay_fee, 0)) as total_profit_eth,\n        AVG(total_value - proposer_subsidy - COALESCE(relay_fee, 0)) as avg_profit_eth,\n        COUNT(*) as block_count\n    FROM analysis_pbs_v3\n    WHERE\n        $__timeFilter(block_timestamp)\n        AND NOT is_block_vanilla\n\n    GROUP BY time, builder_name\n),\n-- Identify top 9 builders across the entire time range\ntop_builders AS (\n    SELECT builder_name\n    FROM (\n        SELECT\n            builder_name,\n            SUM(total_profit_eth) as total_profit\n        FROM builder_profits\n        WHERE builder_name != 'unknown'\n        GROUP BY builder_name\n        ORDER BY total_profit DESC\n        LIMIT 9\n    ) t\n),\ncategorized_profits AS (\n    SELECT\n        bp.time,\n        CASE\n            WHEN bp.builder_name IN (SELECT builder_name FROM top_builders) THEN bp.builder_name\n            ELSE 'Others'\n        END as builder_name,\n        bp.total_profit_eth,\n        bp.avg_profit_eth,\n        bp.block_count\n    FROM builder_profits bp\n),\naggregated_profits AS (\n    SELECT\n        time,\n        builder_name,\n        SUM(total_profit_eth) as total_profit_eth,\n        AVG(avg_profit_eth) as avg_profit_eth,\n        SUM(block_count) as block_count\n    FROM categorized_profits\n    GROUP BY time, builder_name\n)\nSELECT\n    time,\n    builder_name,\n    ROUND(total_profit_eth::numeric, 4) as total_profit_eth,\n    ROUND(avg_profit_eth::numeric, 4) as avg_profit_eth,\n    block_count\nFROM aggregated_profits\nORDER BY time, total_profit_eth DESC;\n",
                     "refId": "A",
                     "sql": {
                         "columns": [
@@ -1119,7 +1173,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Distribution of block values (proposer profit) for MEV-Boost vs vanilla blocks.\nReveals how MEV-Boost increases value, and how often negative or low-value blocks occur.",
             "fieldConfig": {
@@ -1230,7 +1284,7 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
@@ -1258,7 +1312,7 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
@@ -1297,7 +1351,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Displays average ETH earned per block for MEV-Boost and vanilla.\nUseful high-level metric to quantify the value of MEV-Boost.",
             "fieldConfig": {
@@ -1352,7 +1406,7 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
@@ -1390,7 +1444,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Shows the percentage of blocks with negative value for MEV-Boost and vanilla.",
             "fieldConfig": {
@@ -1445,7 +1499,7 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
@@ -1483,7 +1537,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Breaks down MEV revenue split between proposers and builders.\nUseful for monitoring whether builders retain too much value or if proposer rewards are healthy.",
             "fieldConfig": {
@@ -1583,12 +1637,12 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
                     "rawQuery": true,
-                    "rawSql": "SELECT\n    SUM(proposer_subsidy) AS \"Proposer Profit\",\n    SUM(\n        (builder_balance_increase +\n         CASE WHEN builder_balance_increase < 0\n              THEN COALESCE(builder_extra_transfers, 0)\n              ELSE 0\n         END\n        )\n    ) AS \"Builder Profit\",\n    AVG(COALESCE(relay_fee, 0) / total_value) AS \"Relay Fee\"\nFROM analysis_pbs_v3\nWHERE\n    $__timeFilter(block_timestamp)\n    AND NOT is_block_vanilla\n    AND total_value > 0;\n",
+                    "rawSql": "-- Proposer vs.  Builder Profit\n-- Row: Value and Profitability\n-- Breaks down MEV revenue split between proposers and builders.\n-- Useful for monitoring whether builders retain too much value or if proposer rewards are healthy.\n--\n\n-- Proposer vs Builder Profit Comparison\n-- Compare total profits between proposers and builders\n--\n-- This query shows the profit distribution across MEV participants:\n-- - Proposer profit: proposer_subsidy (payment from builder to proposer)\n-- - Builder profit: total_value - proposer_subsidy - relay_fee\n-- - Relay fee: relay_fee (payments to relays)\n--\n-- The total_value field already includes the correct logic for builder_extra_transfers:\n-- - builder_extra_transfers are only included when total_value would otherwise be negative\n-- - This represents refunds/adjustments from known builder addresses (e.g., BuilderNet)\n--\n-- Only counts MEV-Boost blocks (where relays is not NULL).\n-- Vanilla blocks (self-built by proposers) are excluded.\n--\n-- The percentages show the profit distribution across all MEV participants and sum to ~100%.\n--\n\nSELECT\n    AVG(proposer_subsidy/total_value) as \"Proposer Profit\",\n    AVG((total_value - proposer_subsidy - COALESCE(relay_fee, 0))/total_value) as \"Builder Profit\",\n    AVG(COALESCE(relay_fee, 0)/total_value) as \"Relay Fee\"\nFROM analysis_pbs_v3\nWHERE\n    $__timeFilter(block_timestamp)\n    AND NOT is_block_vanilla\n    AND total_value > 0\n",
                     "refId": "A",
                     "sql": {
                         "columns": [
@@ -1615,7 +1669,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Proposer share of total value in block.",
             "fieldConfig": {
@@ -1705,12 +1759,12 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
                     "rawQuery": true,
-                    "rawSql": "-- Builder Profit Split Over Time\n-- Shows the percentage of total value that goes to proposers vs builders over time, grouped by builder\n--\n-- This query aggregates by time and builder_name:\n-- - Proposer profit: Sum of proposer_subsidy (payment from builder to proposer)\n-- - Builder profit: builder_balance_increase + builder_extra_transfers (only when builder_balance_increase < 0)\n--   - builder_balance_increase: Direct balance increase of the builder address\n--   - builder_extra_transfers: Additional transfers from known builder addresses (e.g., BuilderNet refunds)\n--     Only added when builder_balance_increase is negative (loss scenario)\n-- - Proposer profit %: Percentage of total value that goes to proposers\n--\n-- Only counts MEV-Boost blocks (where relays is not NULL).\n-- Vanilla blocks (self-built by proposers) are excluded.\n--\n-- Variables:\n-- - $__timeFilter(block_timestamp): Grafana time range filter\n-- - $__timeGroup(block_timestamp, '1d'): Groups data into time buckets (1 day default)\n--\n-- Returns:\n-- - time: Time bucket\n-- - builder_name: Name of the builder\n-- - proposer_profit_pct: Percentage of total value paid to proposers (0-100)\n-- - total_proposer_profit_eth: Total profit paid to proposers in ETH\n-- - total_builder_profit_eth: Total profit kept by builder in ETH\n-- - total_value_eth: Total value (proposer + builder profit) in ETH\n-- - block_count: Number of MEV-Boost blocks\n--\n-- Usage in Grafana:\n-- - Visualization: Time series (lines)\n-- - Format proposer_profit_pct as percentage\n-- - Shows how builder profit splits evolve over time\n-- - Only includes top 5 builders by total block count in the time range\n\nWITH top_builders AS (\n    SELECT builder_name\n    FROM analysis_pbs_v3\n    WHERE\n        $__timeFilter(block_timestamp)\n        AND NOT is_block_vanilla AND total_value > 0.01\n    GROUP BY builder_name\n    ORDER BY COUNT(*) DESC\n    LIMIT 5\n)\nSELECT\n    $__timeGroup(apv.block_timestamp, $__interval) as time,\n    apv.builder_name,\n    ROUND(\n        (AVG(apv.proposer_subsidy / (apv.total_value)) * 100)::numeric,\n        2\n    ) as proposer_profit_pct\n    --ROUND((SUM(apv.proposer_subsidy) / 1e18)::numeric, 4) as total_proposer_profit_eth,\n    --ROUND((SUM(apv.builder_balance_increase + CASE WHEN apv.builder_balance_increase < 0 THEN COALESCE(apv.builder_extra_transfers, 0) ELSE 0 END) / 1e18)::numeric, 4) as total_builder_profit_eth,\n    --ROUND((SUM(apv.total_value) / 1e18)::numeric, 4) as total_value_eth,\n    --COUNT(*) as block_count\nFROM analysis_pbs_v3 apv\nINNER JOIN top_builders tb ON apv.builder_name = tb.builder_name\nWHERE\n    $__timeFilter(apv.block_timestamp)\n    AND NOT apv.is_block_vanilla AND total_value > 0.01\nGROUP BY time, apv.builder_name\nORDER BY time, apv.builder_name;\n",
+                    "rawSql": "-- Proposer share (per builder)\n-- Row: Value and Profitability\n-- Proposer share of total value in block.\n--\n\n-- Builder Profit Split Over Time\n-- Shows the percentage of total value that goes to proposers vs builders over time, grouped by builder\n--\n-- This query aggregates by time and builder_name:\n-- - Proposer profit: proposer_subsidy (payment from builder to proposer)\n-- - Builder profit: total_value - proposer_subsidy - relay_fee\n-- - Proposer profit %: Percentage of total value that goes to proposers\n--\n-- The total_value field already includes the correct logic for builder_extra_transfers:\n-- - builder_extra_transfers are only included when total_value would otherwise be negative\n-- - This represents refunds/adjustments from known builder addresses (e.g., BuilderNet)\n--\n-- Only counts MEV-Boost blocks (where relays is not NULL).\n-- Vanilla blocks (self-built by proposers) are excluded.\n--\n-- Variables:\n-- - $__timeFilter(block_timestamp): Grafana time range filter\n-- - $__timeGroup(block_timestamp, '1d'): Groups data into time buckets (1 day default)\n--\n-- Returns:\n-- - time: Time bucket\n-- - builder_name: Name of the builder\n-- - proposer_profit_pct: Percentage of total value paid to proposers (0-100)\n-- - total_proposer_profit_eth: Total profit paid to proposers in ETH\n-- - total_builder_profit_eth: Total profit kept by builder in ETH\n-- - total_value_eth: Total value (proposer + builder profit) in ETH\n-- - block_count: Number of MEV-Boost blocks\n--\n-- Usage in Grafana:\n-- - Visualization: Time series (lines)\n-- - Format proposer_profit_pct as percentage\n-- - Shows how builder profit splits evolve over time\n-- - Only includes top 5 builders by total block count in the time range\n\nWITH top_builders AS (\n    SELECT builder_name\n    FROM analysis_pbs_v3\n    WHERE\n        $__timeFilter(block_timestamp)\n        AND NOT is_block_vanilla\n    GROUP BY builder_name\n    ORDER BY COUNT(*) DESC\n    LIMIT 5\n)\nSELECT\n    $__timeGroup(apv.block_timestamp, $__interval) as time,\n    apv.builder_name,\n    ROUND(\n        (AVG(apv.proposer_subsidy / (apv.total_value)) * 100)::numeric,\n        2\n    ) as proposer_profit_pct\n    --ROUND(SUM(apv.proposer_subsidy)::numeric, 4) as total_proposer_profit_eth,\n    --ROUND(SUM(apv.total_value - apv.proposer_subsidy - COALESCE(apv.relay_fee, 0))::numeric, 4) as total_builder_profit_eth,\n    --ROUND(SUM(apv.total_value)::numeric, 4) as total_value_eth,\n    --COUNT(*) as block_count\nFROM analysis_pbs_v3 apv\nINNER JOIN top_builders tb ON apv.builder_name = tb.builder_name\nWHERE\n    $__timeFilter(apv.block_timestamp)\n    AND NOT apv.is_block_vanilla AND apv.total_value > 0.01\nGROUP BY time, apv.builder_name\nORDER BY time, apv.builder_name;\n",
                     "refId": "A",
                     "sql": {
                         "columns": [
@@ -1747,7 +1801,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Shows how much builders are overbidding relative to block value.\nLarge overbids indicate competitive pressure among builders or strategies that prioritize winning over profitability.",
             "fieldConfig": {
@@ -1828,12 +1882,12 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
                     "rawQuery": true,
-                    "rawSql": "-- Overbidding Builders Analysis\n-- Identify builders that pay proposers more than their actual onchain profit\n--\n-- Overbidding occurs when the builder's net profit is negative after accounting for:\n-- - builder_balance_increase: Direct balance increase of the builder address\n-- - builder_extra_transfers: Additional transfers from known builder addresses (e.g., BuilderNet refunds)\n--   Only added when builder_balance_increase is negative (loss scenario)\n--\n-- Net profit = builder_balance_increase + builder_extra_transfers (when builder_balance_increase < 0)\n-- When the net profit is negative, the builder overpaid relative to their profit (overbid).\n--\n-- Only counts MEV-Boost blocks (where relays is not NULL).\n-- Vanilla blocks are excluded as they don't have proposer subsidies.\n--\n-- Variables:\n-- - $__timeFilter(block_timestamp): Grafana time range filter\n--\n-- Returns:\n-- - builder_name: Name of the builder (or \"Others\" for rank >9)\n-- - overbid_block_count: Number of blocks where overbid occurred (profit < subsidy)\n-- - total_block_count: Total number of blocks by this builder\n-- - overbid_pct: Percentage of blocks where overbidding occurred\n--\n-- Usage in Grafana:\n-- - Visualization: Table or Bar chart\n-- - Identify which builders frequently overbid and by how much\n\nWITH builder_overbids AS (\n    SELECT\n        builder_name,\n        COUNT(*) FILTER (WHERE (builder_balance_increase + CASE WHEN builder_balance_increase < 0 THEN COALESCE(builder_extra_transfers, 0) ELSE 0 END) < 0) as overbid_block_count,\n        COUNT(*) as total_block_count\n    FROM analysis_pbs_v3\n    WHERE\n        $__timeFilter(block_timestamp)\n        AND NOT is_block_vanilla\n    GROUP BY builder_name\n),\ntop_builders AS (\n    SELECT builder_name\n    FROM builder_overbids\n    WHERE builder_name != 'unknown'\n    ORDER BY total_block_count DESC\n    LIMIT 5\n),\ncategorized_overbids AS (\n    SELECT\n        CASE\n            WHEN bo.builder_name IN (SELECT builder_name FROM top_builders) THEN bo.builder_name\n            ELSE 'Others'\n        END as builder_name,\n        bo.overbid_block_count,\n        bo.total_block_count\n    FROM builder_overbids bo\n),\naggregated_overbids AS (\n    SELECT\n        builder_name,\n        SUM(overbid_block_count) as overbid_block_count,\n        SUM(total_block_count) as total_block_count\n    FROM categorized_overbids\n    GROUP BY builder_name\n)\nSELECT\n    builder_name,\n    --overbid_block_count,\n    --total_block_count,\n    ROUND((overbid_block_count::numeric / NULLIF(total_block_count, 0) * 100), 2) as overbid_pct\nFROM aggregated_overbids\nWHERE builder_name!='Others' AND total_block_count>20\nORDER BY overbid_pct DESC;\n",
+                    "rawSql": "-- Overbid Distribution\n-- Row: Value and Profitability\n-- Shows how much builders are overbidding relative to block value.\n-- Large overbids indicate competitive pressure among builders or strategies that prioritize winning over profitability.\n--\n\n-- Overbidding Builders Analysis\n-- Identify builders that have negative net profit (after paying proposers and relays)\n--\n-- Overbidding occurs when the builder's net profit is negative:\n-- builder_profit = total_value - proposer_subsidy - relay_fee\n--\n-- When builder_profit < 0, the builder lost money on the block (overbid).\n--\n-- The total_value field already includes the correct logic for builder_extra_transfers:\n-- - builder_extra_transfers are only included when total_value would otherwise be negative\n-- - This represents refunds/adjustments from known builder addresses (e.g., BuilderNet)\n--\n-- Only counts MEV-Boost blocks (where relays is not NULL).\n-- Vanilla blocks are excluded as they don't have proposer subsidies.\n--\n-- Variables:\n-- - $__timeFilter(block_timestamp): Grafana time range filter\n--\n-- Returns:\n-- - builder_name: Name of the builder (or \"Others\" for rank >9)\n-- - overbid_block_count: Number of blocks where builder had negative profit\n-- - total_block_count: Total number of blocks by this builder (min 20 blocks)\n-- - overbid_pct: Percentage of blocks where overbidding occurred\n--\n-- Usage in Grafana:\n-- - Visualization: Table or Bar chart\n-- - Identify which builders frequently overbid and by how much\n\nWITH builder_overbids AS (\n    SELECT\n        builder_name,\n        COUNT(*) FILTER (WHERE (total_value - proposer_subsidy - COALESCE(relay_fee, 0)) < 0) as overbid_block_count,\n        COUNT(*) as total_block_count\n    FROM analysis_pbs_v3\n    WHERE\n        $__timeFilter(block_timestamp)\n        AND NOT is_block_vanilla\n    GROUP BY builder_name\n),\ntop_builders AS (\n    SELECT builder_name\n    FROM builder_overbids\n    WHERE builder_name != 'unknown'\n    ORDER BY total_block_count DESC\n    LIMIT 5\n),\ncategorized_overbids AS (\n    SELECT\n        CASE\n            WHEN bo.builder_name IN (SELECT builder_name FROM top_builders) THEN bo.builder_name\n            ELSE 'Others'\n        END as builder_name,\n        bo.overbid_block_count,\n        bo.total_block_count\n    FROM builder_overbids bo\n),\naggregated_overbids AS (\n    SELECT\n        builder_name,\n        SUM(overbid_block_count) as overbid_block_count,\n        SUM(total_block_count) as total_block_count\n    FROM categorized_overbids\n    GROUP BY builder_name\n)\nSELECT\n    builder_name,\n    --overbid_block_count,\n    --total_block_count,\n    ROUND((overbid_block_count::numeric / NULLIF(total_block_count, 0) * 100), 2) as overbid_pct\nFROM aggregated_overbids\nWHERE builder_name!='Others' AND total_block_count>20\nORDER BY overbid_pct DESC;\n",
                     "refId": "A",
                     "sql": {
                         "columns": [
@@ -1860,7 +1914,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Useful for monitoring whether builders retain too much value or if proposer rewards are healthy.",
             "fieldConfig": {
@@ -1942,7 +1996,7 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
@@ -1974,7 +2028,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Counts negative-value blocks per builder.\nUseful for identifying risky or inefficient builders and relay-builder mismatches.",
             "fieldConfig": {
@@ -2081,7 +2135,7 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
@@ -2113,7 +2167,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Counts negative-value blocks per builder.\nUseful for identifying risky or inefficient builders and relay-builder mismatches.",
             "fieldConfig": {
@@ -2235,7 +2289,7 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
@@ -2267,7 +2321,7 @@
         {
             "datasource": {
                 "type": "grafana-postgresql-datasource",
-                "uid": "ts-flashbots"
+                "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
             },
             "description": "Lists all blocks where total value was negative.\nHelps diagnose which builders are losing money, and whether specific relays or strategies malfunctioned.",
             "fieldConfig": {
@@ -2318,7 +2372,7 @@
                 {
                     "datasource": {
                         "type": "grafana-postgresql-datasource",
-                        "uid": "ts-flashbots"
+                        "uid": "${DS_TIMESCALEDB_- FLASHBOTS}"
                     },
                     "editorMode": "code",
                     "format": "table",
@@ -2365,5 +2419,7 @@
     "timezone": "browser",
     "title": "MEV-Boost Relay (Thomas' Worktest)",
     "uid": "e46c6ca2-cd80-4811-955b-f4fcafc860af",
-    "version": 165
+    "version": 167,
+    "weekStart": "",
+    "id": null
 }
