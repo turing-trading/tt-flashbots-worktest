@@ -1,8 +1,13 @@
 """Pydantic models for PBS analysis data."""
 
-from datetime import datetime
+
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
+
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 class AnalysisPBSV3(BaseModel):

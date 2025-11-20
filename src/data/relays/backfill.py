@@ -1,6 +1,11 @@
 """Backfill data from relays."""
 
+from typing import TYPE_CHECKING
+
 from asyncio import CancelledError, create_task, gather, run, sleep
+
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 import httpx
 from pydantic import TypeAdapter
@@ -15,9 +20,6 @@ from rich.progress import (
     TimeElapsedColumn,
     TimeRemainingColumn,
 )
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.relays.constants import (
     BEACON_ENDPOINT,
@@ -36,10 +38,14 @@ from src.helpers.db import AsyncSessionLocal, Base, async_engine
 from src.helpers.logging import get_logger
 
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+
 class BackfillRelayPayloadDelivered:
     """Backfill relay payload delivered data."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize backfill with relay and endpoint."""
         self.endpoint = ENDPOINTS.get(
             "proposer_payload_delivered",
@@ -222,7 +228,8 @@ class BackfillRelayPayloadDelivered:
         max_consecutive_empty = 2
 
         if self.progress is None:
-            raise ValueError("Progress is not initialized")
+            msg = "Progress is not initialized"
+            raise ValueError(msg)
 
         while current_cursor > end_slot:
             registrations = await self._fetch_data(client, relay, current_cursor)
@@ -311,7 +318,8 @@ class BackfillRelayPayloadDelivered:
             ignore_checkpoints: If True, ignore existing checkpoints and force backfill (default: False)
         """
         if self.progress is None:
-            raise ValueError("Progress is not initialized")
+            msg = "Progress is not initialized"
+            raise ValueError(msg)
         async with AsyncSessionLocal() as session:
             checkpoint = (
                 await self._get_checkpoint(session, relay)
@@ -390,7 +398,7 @@ class BackfillRelayPayloadDelivered:
                     task_id,
                     description=f"{relay[:25]:25} [red]✗[/red] failed",
                 )
-                self.logger.error(f"Backfill failed for {relay}: {e}")
+                self.logger.exception(f"Backfill failed for {relay}: {e}")
                 raise  # Re-raise to be caught by gather(return_exceptions=True)
 
     async def run(

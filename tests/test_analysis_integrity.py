@@ -1,10 +1,17 @@
 """Data integrity tests for analysis_pbs_v2 table."""
 
 import pytest
+
+from typing import TYPE_CHECKING
+
 from sqlalchemy import func, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.analysis.db import AnalysisPBSV3DB as AnalysisPBSDB
+
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 
 # Mark all tests in this module as integration tests (require database)
 pytestmark = pytest.mark.integration
@@ -13,7 +20,7 @@ pytestmark = pytest.mark.integration
 @pytest.mark.asyncio
 async def test_total_value_calculation(
     async_session: AsyncSession, max_violations: int, tolerance: float, sample_size: int
-):
+) -> None:
     """Test that total_value = builder_balance_increase + proposer_subsidy.
 
     This fundamental calculation should be exact (allowing for small
@@ -47,7 +54,7 @@ async def test_total_value_calculation(
 @pytest.mark.asyncio
 async def test_vanilla_block_classification(
     async_session: AsyncSession, max_violations: int, sample_size: int
-):
+) -> None:
     """Test that vanilla block flags are consistent with relay data.
 
     Vanilla blocks should have n_relays = 0 and relays = NULL.
@@ -69,28 +76,34 @@ async def test_vanilla_block_classification(
         if row.is_block_vanilla:
             # Vanilla blocks should have n_relays = 0 and relays = NULL
             if row.n_relays != 0 or row.relays is not None:
-                violations.append(
-                    (row.block_number, "vanilla", row.n_relays, row.relays)
-                )
-        else:
-            # Non-vanilla blocks should have n_relays > 0 and relays NOT NULL
-            if row.n_relays == 0 or row.relays is None:
-                violations.append(
-                    (row.block_number, "non-vanilla", row.n_relays, row.relays)
-                )
+                violations.append((
+                    row.block_number,
+                    "vanilla",
+                    row.n_relays,
+                    row.relays,
+                ))
+        # Non-vanilla blocks should have n_relays > 0 and relays NOT NULL
+        elif row.n_relays == 0 or row.relays is None:
+            violations.append((
+                row.block_number,
+                "non-vanilla",
+                row.n_relays,
+                row.relays,
+            ))
 
         if len(violations) >= max_violations:
             break
 
     assert len(violations) == 0, (
-        f"Found {len(violations)} vanilla block classification violations: {violations[:10]}"
+        f"Found {len(violations)} vanilla block classification violations: "
+        f"{violations[:10]}"
     )
 
 
 @pytest.mark.asyncio
 async def test_relay_count_consistency(
     async_session: AsyncSession, max_violations: int
-):
+) -> None:
     """Test that n_relays matches length of relays array.
 
     The relay count should accurately reflect the array length.
@@ -114,7 +127,7 @@ async def test_relay_count_consistency(
 
 
 @pytest.mark.asyncio
-async def test_non_nullable_defaults(async_session: AsyncSession):
+async def test_non_nullable_defaults(async_session: AsyncSession) -> None:
     """Test that non-nullable fields never contain NULL.
 
     Critical fields should have default values rather than NULL.
@@ -168,7 +181,9 @@ async def test_non_nullable_defaults(async_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_timestamp_consistency(async_session: AsyncSession, max_violations: int):
+async def test_timestamp_consistency(
+    async_session: AsyncSession, max_violations: int
+) -> None:
     """Test that analysis timestamps match block timestamps.
 
     The block_timestamp should be consistent between tables.
@@ -187,14 +202,15 @@ async def test_timestamp_consistency(async_session: AsyncSession, max_violations
     mismatches = result.fetchall()
 
     assert len(mismatches) == 0, (
-        f"Found {len(mismatches)} timestamp mismatches between blocks and analysis: {mismatches[:10]}"
+        f"Found {len(mismatches)} timestamp mismatches between blocks and analysis: "
+        f"{mismatches[:10]}"
     )
 
 
 @pytest.mark.asyncio
 async def test_analysis_references_valid_block(
     async_session: AsyncSession, max_violations: int
-):
+) -> None:
     """Test that all analysis records reference valid blocks.
 
     Foreign key integrity check.
@@ -210,12 +226,13 @@ async def test_analysis_references_valid_block(
     orphaned = result.fetchall()
 
     assert len(orphaned) == 0, (
-        f"Found {len(orphaned)} orphaned analysis records (no matching block): {orphaned[:10]}"
+        f"Found {len(orphaned)} orphaned analysis records (no matching block): "
+        f"{orphaned[:10]}"
     )
 
 
 @pytest.mark.asyncio
-async def test_n_relays_range(async_session: AsyncSession, max_violations: int):
+async def test_n_relays_range(async_session: AsyncSession, max_violations: int) -> None:
     """Test that n_relays is within expected range.
 
     Should be >= 0 and typically <= 10 (current max number of relays).
@@ -244,13 +261,11 @@ async def test_n_relays_range(async_session: AsyncSession, max_violations: int):
 
     # This is informational - may legitimately have many relays in future
     if len(excessive) > 0:
-        print(
-            f"INFO: Found {len(excessive)} blocks with unexpectedly high relay counts (> 20): {excessive[:10]}"
-        )
+        pass
 
 
 @pytest.mark.asyncio
-async def test_value_fields_non_negative(async_session: AsyncSession):
+async def test_value_fields_non_negative(async_session: AsyncSession) -> None:
     """Test that value fields are non-negative where expected.
 
     Total value and proposer subsidy should be non-negative.
@@ -278,7 +293,7 @@ async def test_value_fields_non_negative(async_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_analysis_record_uniqueness(async_session: AsyncSession):
+async def test_analysis_record_uniqueness(async_session: AsyncSession) -> None:
     """Test that each block has at most one analysis record.
 
     block_number is the primary key and should be unique.
@@ -292,5 +307,6 @@ async def test_analysis_record_uniqueness(async_session: AsyncSession):
     duplicates = result.fetchall()
 
     assert len(duplicates) == 0, (
-        f"Found {len(duplicates)} duplicate analysis records for same block: {duplicates}"
+        f"Found {len(duplicates)} duplicate analysis records for same block: "
+        f"{duplicates}"
     )

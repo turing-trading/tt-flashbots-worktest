@@ -2,6 +2,7 @@
 
 import os
 
+
 RELAYS = [
     "relay-analytics.ultrasound.money",  # Redirect from relay.ultrasound.money
     "bloxroute.max-profit.blxrbdn.com",

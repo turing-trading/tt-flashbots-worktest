@@ -1,0 +1,186 @@
+# https://docs.astral.sh/ruff/configuration/
+# Configured for Python 3.14+ target with comprehensive rule sets
+
+line-length = 88
+target-version = "py314"
+preview = true
+
+exclude = [
+    ".git",
+    "__pycache__",
+    "scripts",
+    "build",
+    "dist",
+    "*.egg-info",
+    ".tox",
+    ".venv",
+    "venv",
+    "node_modules",
+]
+
+[lint]
+# Comprehensive rule sets for strict linting
+select = [
+    "F",   # pyflakes - Static analysis
+    "E",
+    "W",   # pycodestyle - Style and formatting (PEP8 rules)
+    "I",   # isort - Import sorting
+    "B",   # flake8-bugbear - Best practices and common bug patterns
+    "D",   # pydocstyle - Docstring conventions
+    "DOC", # pydoclint
+    "N",   # pep8-naming - Naming conventions
+    "RET", # flake8-return - Return statement consistency
+    "C4",  # flake8-comprehensions - Comprehension improvements
+    "UP",  # pyupgrade - Modern Python syntax upgrades
+    "A",   # flake8-builtins - Builtin variable shadowing
+    "ANN", # flake8-annotations - Type annotations
+    "ARG", # flake8-unused-arguments - Unused function arguments
+    "BLE", # flake8-blind-except - Blind except statements
+    "COM", # flake8-commas - Trailing commas
+    "DTZ", # flake8-datetimez - Datetime timezone usage
+    "EM",  # flake8-errmsg - Error message formatting
+    # "ERA",  # eradicate - Commented-out code
+    "EXE",  # flake8-executable - Executable file issues
+    "FBT",  # flake8-boolean-trap - Boolean trap antipattern
+    "FLY",  # flynt - String formatting
+    "FURB", # refurb - Refactoring suggestions
+    "G",    # flake8-logging-format - Logging format
+    "ICN",  # flake8-import-conventions - Import conventions
+    "INP",  # flake8-no-pep420 - PEP 420 namespace packages
+    "INT",  # flake8-gettext - Internationalization
+    "ISC",  # flake8-implicit-str-concat - Implicit string concatenation
+    "LOG",  # flake8-logging - Logging best practices
+    "NPY",  # NumPy-specific rules
+    "PD",   # pandas-vet - Pandas best practices
+    "PERF", # perflint - Performance antipatterns
+    "PGH",  # pygrep-hooks - Miscellaneous linting
+    "PIE",  # flake8-pie - Miscellaneous linting
+    "PL",   # Pylint rules
+    "PT",   # flake8-pytest-style - pytest best practices
+    "PTH",  # flake8-use-pathlib - Use pathlib
+    "PYI",  # flake8-pyi - .pyi stub files
+    "Q",    # flake8-quotes - Quote consistency
+    "RSE",  # flake8-raise - Raise statement improvements
+    "RUF",  # Ruff-specific rules
+    "S",    # flake8-bandit - Security linting
+    "SIM",  # flake8-simplify - Code simplification
+    "SLF",  # flake8-self - Private member access
+    "SLOT", # flake8-slots - __slots__ usage
+    "T10",  # flake8-debugger - Debugger imports
+    "T20",  # flake8-print - Print statements
+    "TCH",  # flake8-type-checking - Type checking imports
+    "TID",  # flake8-tidy-imports - Tidy imports
+    "TRY",  # tryceratops - Exception handling
+    "YTT",  # flake8-2020 - Misuse of sys.version
+]
+
+ignore = [
+    "PLR0914", # Too many return statements (handled case-by-case)
+    "SLF001",  # Private member access (handled case-by-case)
+    "COM812",  # Missing trailing comma in Python 3.5+ (handled by formatter)
+    "PLR6301", # Method can be static (personal preference)
+    "FBT001",  # Boolean positional arg in function (common pattern)
+    "PLR0912", # Too many branches (handled case-by-case)
+    "PLR0915", # Too many statements (handled case-by-case)
+    "S311",    # Standard pseudo-random generators (fine for non-crypto uses)
+    "ANN401",  # Dynamically typed expressions (Any) disallowed (too strict)
+    "PLR0913", # Too many arguments (handled with dataclasses)
+    "PLR0917", # Too many positional arguments (handled with dataclasses)
+    "DOC201",  # Missing return in docstring (often implicit)
+    "DOC502",  # Raised exception not explicitly raised (too strict)
+    "S301",    # Pickle usage (necessary for some operations)
+    "S403",    # Pickle imports (necessary for some operations)
+    "S404",    # subprocess module (necessary for system operations)
+    "BLE001",  # Blind except (sometimes necessary)
+    "TRY300",  # Consider using raise from (not always needed)
+    "TRY004",  # Prefer logging exception (personal preference)
+    "FBT002",  # Boolean default value in function (common pattern)
+    "PLC0415", # Import outside toplevel (sometimes needed)
+    "PLR2004", # Magic value used in comparison (sometimes appropriate)
+    "PLR1702", # Too many nested blocks (handled case-by-case)
+    "RUF012",  # Unnecessary type ignore (handled case-by-case)
+]
+
+[lint.per-file-ignores]
+# Ignore specific rules that may be too strict or problematic
+# Allow assert statements in test files (S101 - use of assert)
+"**/test_*.py" = [
+    "S101",
+    "PLR2004",
+    "ARG001",
+    "SLF001",
+    "S105",
+    "S106",
+    "S608",
+    "PLR0904",
+    "INP001",
+]
+"**/tests.py" = [
+    "S101",
+    "PLR2004",
+    "ARG001",
+    "SLF001",
+    "S105",
+    "S106",
+    "S608",
+    "INP001",
+]
+"**/tests/**/*.py" = [
+    "S101",
+    "PLR2004",
+    "ARG001",
+    "SLF001",
+    "S105",
+    "S106",
+    "S608",
+    "RUF029",
+    "INP001",
+]
+"**/conftest.py" = ["PLW0603", "ARG001", "ANN001", "S106", "S101"]
+[lint.pydocstyle]
+convention = "google"
+
+[lint.isort]
+# Import organization settings
+section-order = [
+    "future",
+    "standard-library",
+    "tests",
+    "logging",
+    "types",
+    "asyncio",
+    "web3",
+    "databases",
+    "dataframes",
+    "third-party",
+    "first-party",
+    "turing-trading-blockchain",
+    "turing-trading-tools",
+    "local-folder",
+]
+split-on-trailing-comma = true
+force-sort-within-sections = true
+force-single-line = false
+combine-as-imports = true
+force-wrap-aliases = true
+lines-after-imports = 2
+
+[lint.isort.sections]
+tests = [
+    "pytest",
+    "pytest_mock",
+    "pytest_postgresql",
+    "pytest_asyncio",
+    "conftest",
+]
+asyncio = ["asyncio", "aiohttp"]
+web3 = ["web3", "eth_utils", "eth_abi", "eth_account", "eth_typing"]
+types = ["pandera", "msgspec", "typing"]
+databases = ["sqlalchemy", "sqlalchemy_timescaledb", "psycopg"]
+dataframes = ["pandas", "numpy", "scipy"]
+logging = [
+    "logging",
+    "prometheus_client",
+    "prometheus_async",
+    "influxdb_client",
+]

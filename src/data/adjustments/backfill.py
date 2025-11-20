@@ -1,9 +1,14 @@
 """Backfill Ultrasound relay adjustments for blocks with negative total_value."""
 
-import asyncio
-import logging
 from datetime import UTC, datetime
-from typing import Any
+
+import logging
+
+from typing import TYPE_CHECKING, Any
+
+import asyncio
+
+from sqlalchemy import text
 
 import httpx
 from rich.console import Console
@@ -16,11 +21,14 @@ from rich.progress import (
     TimeElapsedColumn,
     TimeRemainingColumn,
 )
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.adjustments.db import UltrasoundAdjustmentDB
 from src.helpers.db import AsyncSessionLocal, Base, async_engine
+
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 
 # Configure logging
 logging.basicConfig(
@@ -34,8 +42,7 @@ console = Console()
 async def fetch_adjustment_from_api(
     slot: int, client: httpx.AsyncClient
 ) -> tuple[bool, dict[str, Any] | None]:
-    """
-    Fetch adjustment data from Ultrasound relay API.
+    """Fetch adjustment data from Ultrasound relay API.
 
     Returns:
         (success, data) tuple where:
@@ -61,7 +68,7 @@ async def fetch_adjustment_from_api(
         logger.warning(f"HTTP error fetching adjustment for slot {slot}: {e}")
         return (False, None)
     except Exception as e:
-        logger.error(f"Error fetching adjustment for slot {slot}: {e}")
+        logger.exception(f"Error fetching adjustment for slot {slot}: {e}")
         return (False, None)
 
 
@@ -109,8 +116,7 @@ async def create_tables() -> None:
 async def get_ultrasound_slots_to_process(
     session: AsyncSession,
 ) -> list[tuple[int, int]]:
-    """
-    Get Ultrasound relay slots that haven't been processed yet.
+    """Get Ultrasound relay slots that haven't been processed yet.
 
     Returns slots in descending order (most recent first).
     """
@@ -134,8 +140,7 @@ async def process_batch(
     slots_batch: list[tuple[int, int]],
     client: httpx.AsyncClient,
 ) -> list[tuple[int, bool, dict[str, Any] | None]]:
-    """
-    Process a batch of slots concurrently.
+    """Process a batch of slots concurrently.
 
     Returns:
         List of (slot, success, data) tuples
@@ -153,8 +158,7 @@ async def backfill_adjustments(
     skip_existing: bool = True,
     batch_size: int = 100,
 ) -> None:
-    """
-    Backfill adjustments for Ultrasound relay blocks.
+    """Backfill adjustments for Ultrasound relay blocks.
 
     Args:
         limit: Maximum number of slots to process (None for all)
@@ -273,7 +277,7 @@ async def backfill_adjustments(
                 )
 
 
-async def main():
+async def main() -> None:
     """Main entry point for backfill script."""
     import sys
 
@@ -283,7 +287,6 @@ async def main():
         try:
             limit = int(sys.argv[1])
         except ValueError:
-            print(f"Usage: {sys.argv[0]} [limit]")
             sys.exit(1)
 
     await backfill_adjustments(limit=limit)
