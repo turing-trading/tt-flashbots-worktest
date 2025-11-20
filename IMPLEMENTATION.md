@@ -17,7 +17,7 @@ A comprehensive **Ethereum MEV-Boost data pipeline** that collects, processes, a
 
 **Six-stage processing pipeline per block:**
 1. Block header fetching and storage
-2. Proposer balance tracking (before/after block)
+2. Builder balance tracking (before/after block)
 3. Extra builder balance monitoring (known addresses)
 4. Relay payload collection (with smart retry logic)
 5. Ultrasound adjustment fetching (relay fees)
@@ -34,8 +34,8 @@ A comprehensive **Ethereum MEV-Boost data pipeline** that collects, processes, a
   - Parallel RPC requests (up to 50 blocks/request)
   - Date-based backfill strategy
 
-#### Proposers Module (`src/data/proposers/`)
-- **Implemented:** Proposer profit tracking via balance changes
+#### Builders Module (`src/data/builders/`)
+- **Implemented:** Builder profit tracking via balance changes
 - **Features:**
   - Balance fetching at block N-1 and N
   - Profit calculation (balance_increase)
@@ -43,7 +43,7 @@ A comprehensive **Ethereum MEV-Boost data pipeline** that collects, processes, a
   - Parallel RPC batching (10 concurrent requests)
 
 **Known builder addresses tracked:**
-- BuilderNet proposer and refund addresses
+- BuilderNet and refund addresses
 - 5 specific addresses for BuilderNet ecosystem
 
 #### Relays Module (`src/data/relays/`)
@@ -94,7 +94,7 @@ A comprehensive **Ethereum MEV-Boost data pipeline** that collects, processes, a
 | Table | Purpose | Key Features |
 |-------|---------|--------------|
 | `blocks` | Ethereum block headers | Full block data with extra_data |
-| `proposers_balance` | Proposer earnings | Balance before/after tracking |
+| `builder_balance` | Builder earnings | Balance before/after tracking |
 | `extra_builder_balance` | Known builder transfers | Composite key on block + address |
 | `relays_payloads` | Relay bid data | Slot-based with relay name |
 | `ultrasound_adjustments` | Relay fees | Delta calculations |
@@ -134,7 +134,7 @@ A comprehensive **Ethereum MEV-Boost data pipeline** that collects, processes, a
 
 **8 test modules with comprehensive coverage:**
 - Block integrity validation
-- Proposer balance verification
+- Builder balance verification
 - Relay data consistency
 - PBS analysis accuracy
 - Edge case handling (genesis, no relays)
