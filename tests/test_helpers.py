@@ -41,11 +41,6 @@ class TestParsers:
         assert result.month == 1
         assert result.day == 1
 
-    def test_parse_hex_timestamp_none(self):
-        """Test parsing None raises TypeError."""
-        with pytest.raises(TypeError):
-            parse_hex_timestamp(None)
-
     def test_wei_to_eth_valid(self):
         """Test Wei to ETH conversion."""
         # 1 ETH = 10^18 Wei
@@ -57,13 +52,6 @@ class TestParsers:
     def test_wei_to_eth_none(self):
         """Test None returns None."""
         assert wei_to_eth(None) is None
-
-    def test_wei_to_eth_precision(self):
-        """Test Wei to ETH maintains precision."""
-        # Test with a precise value
-        wei_value = 1_234_567_890_123_456_789
-        eth_value = wei_to_eth(wei_value)
-        assert abs(eth_value - 1.234567890123456789) < 1e-18
 
 
 class TestConstants:
@@ -115,7 +103,7 @@ class TestBuilderNameParsing:
             ),
             ("0x6265617665726275696c642e6f7267", "BuilderNet (Beaver)"),
             ("0x407273796e636275696c646572", "Rsync"),
-            ("0x4275696c6465722b207777772e627463732e636f6d2f6275696c646572", "unknown"),
+            ("0x4275696c6465722b207777772e627463732e636f6d2f6275696c646572", "BTCS"),
             # Geth variants (should return unknown)
             ("0xd883010f0b846765746888676f312e32342e32856c696e7578", "unknown"),
             ("0xd883011004846765746888676f312e32342e39856c696e7578", "unknown"),

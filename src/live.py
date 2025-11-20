@@ -7,7 +7,7 @@ Processing flow:
 1. WebSocket receives block headers → Queue
 2. Consumer processes each header:
    - Fetch/insert block data
-   - Fetch/insert proposer balance
+   - Fetch/insert builder balance
    - Fetch/insert relay payloads
    - Compute/insert PBS analysis
 
@@ -238,8 +238,8 @@ class LiveProcessor:
                 logger.error(f"Failed to store block #{block_number}, skipping")
                 return
 
-            # Stage 2: Fetch/insert proposer balance
-            balance_data = await self._store_proposer_balance(
+            # Stage 2: Fetch/insert builder balance
+            balance_data = await self._store_builder_balance(
                 block_number, miner_address
             )
 
@@ -339,14 +339,14 @@ class LiveProcessor:
             logger.error(f"Failed to store block #{block_number}: {e}")
             return None
 
-    async def _store_proposer_balance(
+    async def _store_builder_balance(
         self, block_number: int, miner_address: str | None
     ) -> dict[str, Any] | None:
-        """Calculate and store proposer balance change.
+        """Calculate and store builder balance change.
 
         Args:
             block_number: Block number.
-            miner_address: Proposer/miner address.
+            miner_address: Builder/miner address.
 
         Returns:
             Dictionary with balance data if successful, None otherwise.
@@ -384,7 +384,7 @@ class LiveProcessor:
             balance_increase = balance_after - balance_before
 
             # Create model
-            proposer_balance = BuilderBalance(
+            builder_balance = BuilderBalance(
                 block_number=block_number,
                 miner=miner_address,
                 balance_before=balance_before,
@@ -395,13 +395,13 @@ class LiveProcessor:
             # Store in database
             await upsert_model(
                 db_model_class=BuilderBalancesDB,
-                pydantic_model=proposer_balance,
+                pydantic_model=builder_balance,
                 primary_key_value=block_number,
             )
 
             self.builders_processed += 1
             logger.info(
-                f"Stored proposer balance for block #{block_number}: "
+                f"Stored builder balance for block #{block_number}: "
                 f"{wei_to_eth(balance_increase):.4f} ETH"
             )
 
@@ -411,7 +411,7 @@ class LiveProcessor:
 
         except Exception as e:
             logger.error(
-                f"Failed to store proposer balance for block #{block_number}: {e}"
+                f"Failed to store builder balance for block #{block_number}: {e}"
             )
             return None
 
@@ -618,7 +618,7 @@ class LiveProcessor:
 
         Args:
             block_number: Block number
-            miner_address: The proposer/miner address
+            miner_address: The builder/miner address
 
         Returns:
             List of balance increase dicts for builder addresses
@@ -799,8 +799,8 @@ class LiveProcessor:
             block_number: Block number.
             block_timestamp: Block timestamp.
             extra_data: Block extra_data for builder name parsing.
-            miner_address: The proposer/miner address.
-            balance_data: Balance data from proposer step.
+            miner_address: The builder/miner address.
+            balance_data: Balance data from builder step.
             relay_data: Relay data from relay step.
             extra_builder_data: Extra builder balance data.
             adjustment_data: Ultrasound adjustment data with delta (relay fee).
