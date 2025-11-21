@@ -1,12 +1,8 @@
 """Pydantic models for JSON-RPC requests and responses."""
 
-from typing import TYPE_CHECKING
-
 from pydantic import BaseModel, Field
 
-
-if TYPE_CHECKING:
-    from src.helpers.http_models import JsonValue
+from src.helpers.http_models import JsonValue  # noqa: TC001
 
 
 class JsonRpcRequest(BaseModel):
@@ -38,3 +34,8 @@ __all__ = [
     "EthGetBlockByNumberRequest",
     "JsonRpcRequest",
 ]
+
+# Rebuild models to ensure JsonValue recursive type is fully resolved
+JsonRpcRequest.model_rebuild()
+EthBlockNumberRequest.model_rebuild()
+EthGetBlockByNumberRequest.model_rebuild()

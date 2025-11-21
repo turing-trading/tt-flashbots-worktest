@@ -280,7 +280,12 @@ class BackfillExtraBuilderBalances(BackfillBase):
                     break
 
                 async with (
-                    httpx.AsyncClient() as client,
+                    httpx.AsyncClient(
+                        timeout=httpx.Timeout(30.0, connect=10.0),
+                        limits=httpx.Limits(
+                            max_connections=100, max_keepalive_connections=20
+                        ),
+                    ) as client,
                     AsyncSessionLocal() as session,
                 ):
                     # Process in batches
@@ -302,7 +307,7 @@ if __name__ == "__main__":
     # Example: Backfill all missing blocks
     backfill = BackfillExtraBuilderBalances(
         batch_size=10,  # 10 balance queries per JSON-RPC batch
-        db_batch_size=100,  # 100 records per DB insert
-        parallel_batches=100,  # 100 batch requests in parallel
+        db_batch_size=10,  # 10 records per DB insert (reduced)
+        parallel_batches=2,  # 2 batch requests in parallel (conservative)
     )
     run(backfill.run(limit=None))  # Process all missing blocks

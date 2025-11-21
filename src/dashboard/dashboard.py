@@ -8,7 +8,6 @@ from grafanalib.core import (
 from src.dashboard.colors import (
     get_builder_color_overrides,
     get_builder_color_overrides_with_hidden,
-    get_combined_overrides,
     get_relay_color_overrides,
     get_special_color_overrides,
 )
@@ -121,7 +120,7 @@ def generate_dashboard() -> Dashboard:
             w=12,
             h=15,
             reduce_fields="/^market_share_pct$/",
-            overrides=get_special_color_overrides(["vanilla"]),
+            overrides=get_special_color_overrides(["vanilla", "mev-boost"]),
         ),
         create_time_series(
             title="MEV-Boost Market Share",
@@ -148,24 +147,7 @@ def generate_dashboard() -> Dashboard:
                     },
                 }
             ],
-            overrides=get_combined_overrides(
-                get_special_color_overrides(["vanilla"]),
-                [
-                    {
-                        "matcher": {"id": "byName", "options": "vanilla"},
-                        "properties": [
-                            {
-                                "id": "custom.hideFrom",
-                                "value": {
-                                    "tooltip": False,
-                                    "viz": True,
-                                    "legend": False,
-                                },
-                            },
-                        ],
-                    }
-                ],
-            ),
+            overrides=get_special_color_overrides(["vanilla", "mev-boost"]),
         ),
         # Row 2: Relay
         create_row("Relay", relay_row_y),
@@ -206,6 +188,8 @@ def generate_dashboard() -> Dashboard:
             w=12,
             h=15,
             stacking_mode="normal",
+            axis_max=100,
+            axis_min=0,
             axisSoftMin=0,
             axisSoftMax=100,
             transformations=[
@@ -247,6 +231,8 @@ def generate_dashboard() -> Dashboard:
             w=12,
             h=15,
             stacking_mode="normal",
+            axis_max=100,
+            axis_min=0,
             axisSoftMin=0,
             axisSoftMax=100,
             transformations=[
@@ -323,8 +309,9 @@ def generate_dashboard() -> Dashboard:
             y=value_panels_y_1,
             w=12,
             h=15,
-            unit="percent",
+            unit="none",
             x_field="bucket_min",
+            orientation="vertical",
             transformations=[{"id": "merge", "options": {}}],
             overrides=get_special_color_overrides(["vanilla"]),
         ),
@@ -340,7 +327,7 @@ def generate_dashboard() -> Dashboard:
             y=value_panels_y_1,
             w=12,
             h=7,
-            unit="none",  # ETH values, no unit prefix
+            unit="ETH",
             transformations=[{"id": "transpose", "options": {}}],
             color="green",
         ),
@@ -371,7 +358,7 @@ def generate_dashboard() -> Dashboard:
             y=value_panels_y_3,
             w=12,
             h=15,
-            unit="percent",
+            unit="percentunit",
             overrides=get_special_color_overrides([
                 "Proposer Profit",
                 "Builder Profit",
@@ -460,6 +447,7 @@ def generate_dashboard() -> Dashboard:
             w=12,
             h=15,
             unit="percent",
+            axis_max=100,
             overrides=get_builder_color_overrides(),
         ),
         create_table(

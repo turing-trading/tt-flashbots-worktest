@@ -162,7 +162,7 @@ class BackfillAnalysisPBSV3(BackfillBase):
                 BlockDB.number == BuilderBalancesDB.block_number,
             )
             .outerjoin(
-                RelaysPayloadsDB, BlockDB.number == RelaysPayloadsDB.block_number
+                RelaysPayloadsDB, BlockDB.hash == RelaysPayloadsDB.block_hash
             )
             .outerjoin(
                 extra_transfers_subq,
