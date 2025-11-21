@@ -145,9 +145,74 @@ def get_eth_ws_url(ws_url: str | None = None) -> str:
     return get_required_url("ETH_WS_URL", ws_url, "Ethereum WebSocket URL")
 
 
+def get_grafana_api_key(api_key: str | None = None) -> str:
+    """Get Grafana API key from parameter or environment.
+
+    Args:
+        api_key: Optional API key to use directly
+
+    Returns:
+        Grafana API key
+
+    Raises:
+        ValueError: If API key is not provided and GRAFANA_API_KEY env var is not set
+
+    Example:
+        ```python
+        from src.helpers.config import get_grafana_api_key
+
+        # Get from environment
+        api_key = get_grafana_api_key()
+
+        # Or provide explicitly
+        api_key = get_grafana_api_key("glsa_...")
+        ```
+    """
+    if api_key:
+        return api_key
+
+    env_value = os.getenv("GRAFANA_API_KEY")
+    if not env_value:
+        msg = (
+            "Grafana API key must be provided or set in "
+            "GRAFANA_API_KEY environment variable"
+        )
+        raise ValueError(msg)
+
+    return env_value
+
+
+def get_grafana_url(url: str | None = None) -> str:
+    """Get Grafana URL from parameter or environment.
+
+    Args:
+        url: Optional Grafana URL to use directly
+
+    Returns:
+        Grafana instance URL
+
+    Raises:
+        ValueError: If URL is not provided and GRAFANA_URL env var is not set
+
+    Example:
+        ```python
+        from src.helpers.config import get_grafana_url
+
+        # Get from environment
+        grafana_url = get_grafana_url()
+
+        # Or provide explicitly
+        grafana_url = get_grafana_url("https://grafana.example.com")
+        ```
+    """
+    return get_required_url("GRAFANA_URL", url, "Grafana URL")
+
+
 __all__ = [
     "get_eth_rpc_url",
     "get_eth_ws_url",
+    "get_grafana_api_key",
+    "get_grafana_url",
     "get_optional_env",
     "get_required_env",
     "get_required_url",

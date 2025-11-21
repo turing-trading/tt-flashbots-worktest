@@ -111,4 +111,4 @@ SELECT
     ROUND(avg_profit_eth::numeric, 4) as avg_profit_eth,
     block_count
 FROM aggregated_profits
-ORDER BY time, total_profit_eth DESC;
+ORDER BY time, builder_name;

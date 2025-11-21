@@ -51,3 +51,18 @@ backfill:
 
 live:
 	poetry run python src/live.py
+
+dashboard-generate: ## Generate dashboard JSON file locally
+	poetry run python src/dashboard/generate.py
+
+dashboard-preview: ## Update preview dashboard in Grafana
+	poetry run python -m src.dashboard.update_dashboard preview
+
+dashboard-preview-dry: ## Dry run for preview dashboard update
+	poetry run python -m src.dashboard.update_dashboard preview --dry-run
+
+dashboard-prod: ## Update production dashboard in Grafana (requires confirmation)
+	poetry run python -m src.dashboard.update_dashboard production
+
+dashboard-prod-dry: ## Dry run for production dashboard update
+	poetry run python -m src.dashboard.update_dashboard production --dry-run

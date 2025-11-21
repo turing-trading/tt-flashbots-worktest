@@ -5,6 +5,13 @@ from grafanalib.core import (
     Time,
 )
 
+from src.dashboard.colors import (
+    get_builder_color_overrides,
+    get_builder_color_overrides_with_hidden,
+    get_combined_overrides,
+    get_relay_color_overrides,
+    get_special_color_overrides,
+)
 from src.dashboard.panels import (
     create_bar_chart,
     create_pie_chart,
@@ -114,14 +121,7 @@ def generate_dashboard() -> Dashboard:
             w=12,
             h=15,
             reduce_fields="/^market_share_pct$/",
-            overrides=[
-                {
-                    "matcher": {"id": "byName", "options": "vanilla"},
-                    "properties": [
-                        {"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}
-                    ],
-                }
-            ],
+            overrides=get_special_color_overrides(["vanilla"]),
         ),
         create_time_series(
             title="MEV-Boost Market Share",
@@ -148,21 +148,24 @@ def generate_dashboard() -> Dashboard:
                     },
                 }
             ],
-            overrides=[
-                {
-                    "matcher": {"id": "byName", "options": "vanilla"},
-                    "properties": [
-                        {
-                            "id": "color",
-                            "value": {"fixedColor": "red", "mode": "fixed"},
-                        },
-                        {
-                            "id": "custom.hideFrom",
-                            "value": {"tooltip": True, "viz": True, "legend": True},
-                        },
-                    ],
-                }
-            ],
+            overrides=get_combined_overrides(
+                get_special_color_overrides(["vanilla"]),
+                [
+                    {
+                        "matcher": {"id": "byName", "options": "vanilla"},
+                        "properties": [
+                            {
+                                "id": "custom.hideFrom",
+                                "value": {
+                                    "tooltip": False,
+                                    "viz": True,
+                                    "legend": False,
+                                },
+                            },
+                        ],
+                    }
+                ],
+            ),
         ),
         # Row 2: Relay
         create_row("Relay", relay_row_y),
@@ -188,17 +191,7 @@ def generate_dashboard() -> Dashboard:
                     },
                 }
             ],
-            overrides=[
-                {
-                    "matcher": {"id": "byName", "options": "Ultrasound"},
-                    "properties": [
-                        {
-                            "id": "color",
-                            "value": {"fixedColor": "#37872D", "mode": "fixed"},
-                        }
-                    ],
-                }
-            ],
+            overrides=get_relay_color_overrides(),
         ),
         create_time_series(
             title="Relay Market Share",
@@ -225,6 +218,7 @@ def generate_dashboard() -> Dashboard:
                     },
                 }
             ],
+            overrides=get_relay_color_overrides(),
         ),
         # Row 3: Builder
         create_row("Builder", builder_row_y),
@@ -238,17 +232,7 @@ def generate_dashboard() -> Dashboard:
             w=12,
             h=15,
             reduce_fields="/^market_share_pct$/",
-            overrides=[
-                {
-                    "matcher": {"id": "byName", "options": "Titan"},
-                    "properties": [
-                        {
-                            "id": "color",
-                            "value": {"fixedColor": "green", "mode": "fixed"},
-                        }
-                    ],
-                }
-            ],
+            overrides=get_builder_color_overrides(),
         ),
         create_time_series(
             title="Builder Market Share (Number of blocks)",
@@ -275,6 +259,7 @@ def generate_dashboard() -> Dashboard:
                     },
                 }
             ],
+            overrides=get_builder_color_overrides(),
         ),
         create_pie_chart(
             title="Builder Market Share (ETH profit)",
@@ -288,7 +273,9 @@ def generate_dashboard() -> Dashboard:
             y=builder_panels_y_2,
             w=12,
             h=15,
+            unit="ETH",
             reduce_fields="/^total_profit_eth$/",
+            overrides=get_builder_color_overrides(),
         ),
         create_time_series(
             title="Builder Market Share (ETH profit)",
@@ -302,7 +289,8 @@ def generate_dashboard() -> Dashboard:
             y=builder_panels_y_2,
             w=12,
             h=15,
-            unit="none",
+            unit="ETH",
+            axis_scale_type="log",
             transformations=[
                 {
                     "id": "groupingToMatrix",
@@ -313,6 +301,12 @@ def generate_dashboard() -> Dashboard:
                     },
                 }
             ],
+            overrides=get_builder_color_overrides_with_hidden([
+                "Titan",
+                "BuilderNet (Beaver)",
+                "BuilderNet (Flashbots)",
+                "BuilderNet (Nethermind)",
+            ]),
         ),
         # Row 4: Value and Profitability
         create_row("Value and Profitability", value_row_y),
@@ -329,17 +323,10 @@ def generate_dashboard() -> Dashboard:
             y=value_panels_y_1,
             w=12,
             h=15,
-            unit="none",
+            unit="percent",
             x_field="bucket_min",
             transformations=[{"id": "merge", "options": {}}],
-            overrides=[
-                {
-                    "matcher": {"id": "byName", "options": "vanilla"},
-                    "properties": [
-                        {"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}
-                    ],
-                }
-            ],
+            overrides=get_special_color_overrides(["vanilla"]),
         ),
         create_stat(
             title="Average Total Value",
@@ -384,33 +371,12 @@ def generate_dashboard() -> Dashboard:
             y=value_panels_y_3,
             w=12,
             h=15,
-            unit="percentunit",
-            overrides=[
-                {
-                    "matcher": {"id": "byName", "options": "Proposer Profit"},
-                    "properties": [
-                        {
-                            "id": "color",
-                            "value": {"fixedColor": "orange", "mode": "fixed"},
-                        }
-                    ],
-                },
-                {
-                    "matcher": {"id": "byName", "options": "Builder Profit"},
-                    "properties": [
-                        {
-                            "id": "color",
-                            "value": {"fixedColor": "green", "mode": "fixed"},
-                        }
-                    ],
-                },
-                {
-                    "matcher": {"id": "byName", "options": "Relay Fee"},
-                    "properties": [
-                        {"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}
-                    ],
-                },
-            ],
+            unit="percent",
+            overrides=get_special_color_overrides([
+                "Proposer Profit",
+                "Builder Profit",
+                "Relay Fee",
+            ]),
         ),
         create_time_series(
             title="Proposer share (per builder)",
@@ -420,6 +386,7 @@ def generate_dashboard() -> Dashboard:
             y=value_panels_y_3,
             w=12,
             h=15,
+            unit="percent",
             interval="1h",
             max_data_points=100,
             spanNulls=True,
@@ -433,6 +400,7 @@ def generate_dashboard() -> Dashboard:
                     },
                 }
             ],
+            overrides=get_builder_color_overrides(),
         ),
         create_bar_chart(
             title="Overbid Distribution",
@@ -447,6 +415,7 @@ def generate_dashboard() -> Dashboard:
             y=value_panels_y_4,
             w=12,
             h=15,
+            unit="percent",
         ),
         create_bar_chart(
             title="Proposer share of total value",
@@ -459,6 +428,8 @@ def generate_dashboard() -> Dashboard:
             y=value_panels_y_4,
             w=12,
             h=15,
+            unit="percent",
+            axis_max=100,
         ),
         create_bar_chart(
             title="Negative Total Value Blocks (MEV-boost)",
@@ -472,6 +443,9 @@ def generate_dashboard() -> Dashboard:
             y=value_panels_y_5,
             w=12,
             h=15,
+            unit="percent",
+            axis_max=100,
+            overrides=get_builder_color_overrides(),
         ),
         create_bar_chart(
             title="Negative Total Value Blocks (vanilla)",
@@ -485,6 +459,8 @@ def generate_dashboard() -> Dashboard:
             y=value_panels_y_5,
             w=12,
             h=15,
+            unit="percent",
+            overrides=get_builder_color_overrides(),
         ),
         create_table(
             title="Negative Total Value blocks",
