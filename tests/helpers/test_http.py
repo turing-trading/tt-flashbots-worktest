@@ -1,9 +1,12 @@
 """Tests for HTTP helpers including retry logic and error handling."""
 
+import math
+
+import pytest
+
 from typing import TYPE_CHECKING
 
 import httpx
-import pytest
 
 from src.helpers.http import (
     create_http_client,
@@ -17,7 +20,8 @@ from src.helpers.http import (
 
 if TYPE_CHECKING:
     from pytest_httpx import HTTPXMock
-    from unittest.mock import AsyncMock
+
+    from src.helpers.http_models import JsonResponse
 
 
 class TestRetryWithBackoff:
@@ -48,7 +52,8 @@ class TestRetryWithBackoff:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
-                raise httpx.HTTPError("Network error")
+                msg = "Network error"
+                raise httpx.HTTPError(msg)
             return "success"
 
         result = await failing_func()
@@ -65,7 +70,8 @@ class TestRetryWithBackoff:
             nonlocal call_count
             call_count += 1
             if call_count < 2:
-                raise httpx.TimeoutException("Timeout")
+                msg = "Timeout"
+                raise httpx.TimeoutException(msg)
             return "success"
 
         result = await timeout_func()
@@ -78,7 +84,8 @@ class TestRetryWithBackoff:
 
         @retry_with_backoff(max_retries=3, base_delay=0.01, log_errors=False)
         async def always_fails() -> None:
-            raise httpx.HTTPError("Persistent error")
+            msg = "Persistent error"
+            raise httpx.HTTPError(msg)
 
         with pytest.raises(httpx.HTTPError, match="Persistent error"):
             await always_fails()
@@ -90,10 +97,13 @@ class TestRetryWithBackoff:
 
         call_times: list[float] = []
 
-        @retry_with_backoff(max_retries=4, base_delay=0.1, max_delay=1.0, log_errors=False)
+        @retry_with_backoff(
+            max_retries=4, base_delay=0.1, max_delay=1.0, log_errors=False
+        )
         async def failing_func() -> None:
             call_times.append(time.time())
-            raise httpx.HTTPError("Error")
+            msg = "Error"
+            raise httpx.HTTPError(msg)
 
         with pytest.raises(httpx.HTTPError):
             await failing_func()
@@ -116,10 +126,13 @@ class TestRetryWithBackoff:
 
         call_times: list[float] = []
 
-        @retry_with_backoff(max_retries=10, base_delay=1.0, max_delay=0.2, log_errors=False)
+        @retry_with_backoff(
+            max_retries=10, base_delay=1.0, max_delay=0.2, log_errors=False
+        )
         async def failing_func() -> None:
             call_times.append(time.time())
-            raise httpx.HTTPError("Error")
+            msg = "Error"
+            raise httpx.HTTPError(msg)
 
         with pytest.raises(httpx.HTTPError):
             await failing_func()
@@ -149,8 +162,8 @@ class TestRetryWithBackoff:
         async def func_with_args(a: int, b: str, *, c: float = 1.0) -> str:
             return f"{a}-{b}-{c}"
 
-        result = await func_with_args(42, "test", c=3.14)
-        assert result == "42-test-3.14"
+        result = await func_with_args(42, "test", c=math.pi)
+        assert result == f"42-test-{math.pi}"
 
 
 class TestLogAndSuppressErrors:
@@ -166,40 +179,59 @@ class TestLogAndSuppressErrors:
 
     @pytest.mark.asyncio
     async def test_suppresses_error_by_default(self) -> None:
-        """Test context manager suppresses errors by default."""
+        """Test context manager suppresses errors by default.
+
+        Raises:
+            ValueError: Test exception that should be suppressed
+        """
         executed = False
         async with log_and_suppress_errors("test operation"):
             executed = True
-            raise ValueError("Test error")
+            msg = "Test error"
+            raise ValueError(msg)
 
         # Error was suppressed, execution continued
         assert executed
 
     @pytest.mark.asyncio
     async def test_reraises_when_suppress_false(self) -> None:
-        """Test context manager re-raises when suppress=False."""
-        with pytest.raises(ValueError, match="Test error"):
+        """Test context manager re-raises when suppress=False.
+
+        Raises:
+            ValueError: Test exception that should be re-raised
+        """
+        msg = "Test error"
+        with pytest.raises(ValueError, match=msg):
             async with log_and_suppress_errors("test operation", suppress=False):
-                raise ValueError("Test error")
+                raise ValueError(msg)
 
     @pytest.mark.asyncio
-    async def test_logs_different_levels(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Test context manager logs at different levels."""
+    async def test_logs_different_levels(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test context manager logs at different levels.
+
+        Raises:
+            ValueError: Test exceptions at different log levels
+        """
         import logging
 
         caplog.set_level(logging.DEBUG)
 
         # Test warning level (default)
         async with log_and_suppress_errors("warning op"):
-            raise ValueError("Warning error")
+            msg = "Warning error"
+            raise ValueError(msg)
 
         # Test error level
         async with log_and_suppress_errors("error op", log_level="error"):
-            raise ValueError("Error error")
+            msg = "Error error"
+            raise ValueError(msg)
 
         # Test info level
         async with log_and_suppress_errors("info op", log_level="info"):
-            raise ValueError("Info error")
+            msg = "Info error"
+            raise ValueError(msg)
 
         # Verify logs
         assert any("warning op" in record.message for record in caplog.records)
@@ -207,14 +239,21 @@ class TestLogAndSuppressErrors:
         assert any("info op" in record.message for record in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_logs_exception_details(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Test context manager logs exception details."""
+    async def test_logs_exception_details(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test context manager logs exception details.
+
+        Raises:
+            ConnectionError: Test exception to verify logging
+        """
         import logging
 
         caplog.set_level(logging.WARNING)
 
         async with log_and_suppress_errors("database operation"):
-            raise ConnectionError("Database connection failed")
+            msg = "Database connection failed"
+            raise ConnectionError(msg)
 
         # Verify error details in log
         assert any(
@@ -238,7 +277,8 @@ class TestHttpxIntegration:
 
             # Simulate timeout on first 2 calls
             if call_count < 3:
-                raise httpx.TimeoutException("Request timed out")
+                msg = "Request timed out"
+                raise httpx.TimeoutException(msg)
 
             return "success"
 
@@ -258,8 +298,9 @@ class TestHttpxIntegration:
 
             # Simulate 500 error on first call
             if call_count == 1:
+                msg = "Server error"
                 raise httpx.HTTPStatusError(
-                    "Server error",
+                    msg,
                     request=httpx.Request("GET", "https://example.com"),
                     response=httpx.Response(500),
                 )
@@ -275,7 +316,7 @@ class TestFetchJson:
     """Tests for fetch_json function using pytest-httpx."""
 
     @pytest.mark.asyncio
-    async def test_fetch_json_success(self, httpx_mock: "HTTPXMock") -> None:
+    async def test_fetch_json_success(self, httpx_mock: HTTPXMock) -> None:
         """Test successful JSON fetch."""
         httpx_mock.add_response(
             url="https://api.example.com/data",
@@ -288,7 +329,7 @@ class TestFetchJson:
         assert result == {"key": "value", "count": 42}
 
     @pytest.mark.asyncio
-    async def test_fetch_json_list_response(self, httpx_mock: "HTTPXMock") -> None:
+    async def test_fetch_json_list_response(self, httpx_mock: HTTPXMock) -> None:
         """Test JSON fetch with list response."""
         httpx_mock.add_response(
             url="https://api.example.com/items",
@@ -301,7 +342,7 @@ class TestFetchJson:
         assert result == [{"id": 1}, {"id": 2}, {"id": 3}]
 
     @pytest.mark.asyncio
-    async def test_fetch_json_404_returns_none(self, httpx_mock: "HTTPXMock") -> None:
+    async def test_fetch_json_404_returns_none(self, httpx_mock: HTTPXMock) -> None:
         """Test 404 response returns None."""
         httpx_mock.add_response(
             url="https://api.example.com/notfound",
@@ -314,7 +355,7 @@ class TestFetchJson:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_fetch_json_500_returns_none(self, httpx_mock: "HTTPXMock") -> None:
+    async def test_fetch_json_500_returns_none(self, httpx_mock: HTTPXMock) -> None:
         """Test 500 error returns None."""
         httpx_mock.add_response(
             url="https://api.example.com/error",
@@ -328,7 +369,7 @@ class TestFetchJson:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_fetch_json_timeout_returns_none(self, httpx_mock: "HTTPXMock") -> None:
+    async def test_fetch_json_timeout_returns_none(self, httpx_mock: HTTPXMock) -> None:
         """Test timeout returns None."""
         httpx_mock.add_exception(httpx.TimeoutException("Request timed out"))
 
@@ -338,7 +379,7 @@ class TestFetchJson:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_fetch_json_with_custom_timeout(self, httpx_mock: "HTTPXMock") -> None:
+    async def test_fetch_json_with_custom_timeout(self, httpx_mock: HTTPXMock) -> None:
         """Test fetch with custom timeout parameter."""
         httpx_mock.add_response(
             url="https://api.example.com/data",
@@ -346,12 +387,14 @@ class TestFetchJson:
         )
 
         async with httpx.AsyncClient() as client:
-            result = await fetch_json(client, "https://api.example.com/data", timeout=30.0)
+            result = await fetch_json(
+                client, "https://api.example.com/data", timeout=30.0
+            )
 
         assert result == {"status": "ok"}
 
     @pytest.mark.asyncio
-    async def test_fetch_json_no_raise_on_error(self, httpx_mock: "HTTPXMock") -> None:
+    async def test_fetch_json_no_raise_on_error(self, httpx_mock: HTTPXMock) -> None:
         """Test fetch with raise_for_status=False."""
         httpx_mock.add_response(
             url="https://api.example.com/error",
@@ -373,7 +416,7 @@ class TestPostJson:
     """Tests for post_json function using pytest-httpx."""
 
     @pytest.mark.asyncio
-    async def test_post_json_success(self, httpx_mock: "HTTPXMock") -> None:
+    async def test_post_json_success(self, httpx_mock: HTTPXMock) -> None:
         """Test successful JSON POST."""
         httpx_mock.add_response(
             url="https://api.example.com/submit",
@@ -392,13 +435,15 @@ class TestPostJson:
 
         # Verify the request payload
         request = httpx_mock.get_request()
+        assert request is not None
         assert request.method == "POST"
         # JSON can be serialized with or without spaces
         import json
+
         assert json.loads(request.read()) == {"name": "test", "value": 42}
 
     @pytest.mark.asyncio
-    async def test_post_json_error_returns_none(self, httpx_mock: "HTTPXMock") -> None:
+    async def test_post_json_error_returns_none(self, httpx_mock: HTTPXMock) -> None:
         """Test POST error returns None."""
         httpx_mock.add_response(
             url="https://api.example.com/submit",
@@ -416,7 +461,7 @@ class TestPostJson:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_post_json_with_custom_timeout(self, httpx_mock: "HTTPXMock") -> None:
+    async def test_post_json_with_custom_timeout(self, httpx_mock: HTTPXMock) -> None:
         """Test POST with custom timeout."""
         httpx_mock.add_response(
             url="https://api.example.com/submit",
@@ -436,7 +481,7 @@ class TestPostJson:
 
     @pytest.mark.asyncio
     async def test_post_json_network_error_returns_none(
-        self, httpx_mock: "HTTPXMock"
+        self, httpx_mock: HTTPXMock
     ) -> None:
         """Test network error returns None."""
         httpx_mock.add_exception(httpx.ConnectError("Connection failed"))
@@ -477,7 +522,7 @@ class TestHandleHttpErrors:
 
     @pytest.mark.asyncio
     async def test_handle_errors_returns_default_on_404(
-        self, httpx_mock: "HTTPXMock"
+        self, httpx_mock: HTTPXMock
     ) -> None:
         """Test decorator returns default value on 404."""
         httpx_mock.add_response(
@@ -498,7 +543,7 @@ class TestHandleHttpErrors:
 
     @pytest.mark.asyncio
     async def test_handle_errors_returns_default_on_500(
-        self, httpx_mock: "HTTPXMock"
+        self, httpx_mock: HTTPXMock
     ) -> None:
         """Test decorator returns default value on server error."""
         httpx_mock.add_response(
@@ -520,7 +565,7 @@ class TestHandleHttpErrors:
 
     @pytest.mark.asyncio
     async def test_handle_errors_success_returns_value(
-        self, httpx_mock: "HTTPXMock"
+        self, httpx_mock: HTTPXMock
     ) -> None:
         """Test decorator returns actual value on success."""
         httpx_mock.add_response(
@@ -540,7 +585,7 @@ class TestHandleHttpErrors:
         assert result == {"status": "ok"}
 
     @pytest.mark.asyncio
-    async def test_handle_errors_on_timeout(self, httpx_mock: "HTTPXMock") -> None:
+    async def test_handle_errors_on_timeout(self, httpx_mock: HTTPXMock) -> None:
         """Test decorator handles timeout exceptions."""
         httpx_mock.add_exception(httpx.TimeoutException("Request timed out"))
 
@@ -559,7 +604,7 @@ class TestHttpIntegrationWithDecorators:
     """Integration tests combining decorators with HTTP calls."""
 
     @pytest.mark.asyncio
-    async def test_retry_with_fetch_json(self, httpx_mock: "HTTPXMock") -> None:
+    async def test_retry_with_fetch_json(self, httpx_mock: HTTPXMock) -> None:
         """Test retry decorator with fetch_json."""
         # fetch_json returns None on error (doesn't raise), so retry won't be triggered
         httpx_mock.add_response(
@@ -568,7 +613,7 @@ class TestHttpIntegrationWithDecorators:
         )
 
         @retry_with_backoff(max_retries=3, base_delay=0.01, log_errors=False)
-        async def fetch_with_retry(client: httpx.AsyncClient) -> dict | None:
+        async def fetch_with_retry(client: httpx.AsyncClient) -> JsonResponse:
             return await fetch_json(client, "https://api.example.com/data")
 
         async with httpx.AsyncClient() as client:
@@ -578,7 +623,7 @@ class TestHttpIntegrationWithDecorators:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_combined_decorators(self, httpx_mock: "HTTPXMock") -> None:
+    async def test_combined_decorators(self, httpx_mock: HTTPXMock) -> None:
         """Test combining retry and error handling decorators."""
         call_count = 0
 
@@ -607,7 +652,9 @@ class TestRetryWithBackoffLogging:
     """Tests for retry_with_backoff decorator with logging enabled."""
 
     @pytest.mark.asyncio
-    async def test_logs_timeout_warnings(self, caplog: pytest.LogCaptureFixture) -> None:
+    async def test_logs_timeout_warnings(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Test that timeout errors are logged when log_errors=True."""
         import logging
 
@@ -619,7 +666,8 @@ class TestRetryWithBackoffLogging:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
-                raise httpx.TimeoutException("Timeout")
+                msg = "Timeout"
+                raise httpx.TimeoutException(msg)
             return "success"
 
         result = await timeout_func()
@@ -644,7 +692,8 @@ class TestRetryWithBackoffLogging:
             nonlocal call_count
             call_count += 1
             if call_count < 2:
-                raise httpx.HTTPError("Network error")
+                msg = "Network error"
+                raise httpx.HTTPError(msg)
             return "success"
 
         result = await failing_func()
@@ -668,7 +717,8 @@ class TestRetryWithBackoffLogging:
             nonlocal call_count
             call_count += 1
             if call_count < 2:
-                raise ValueError("Some error")
+                msg = "Some error"
+                raise ValueError(msg)
             return "success"
 
         result = await exception_func()
@@ -686,7 +736,8 @@ class TestRetryWithBackoffLogging:
 
         @retry_with_backoff(max_retries=2, base_delay=0.01, log_errors=True)
         async def always_fails() -> None:
-            raise httpx.HTTPError("Persistent error")
+            msg = "Persistent error"
+            raise httpx.HTTPError(msg)
 
         with pytest.raises(httpx.HTTPError):
             await always_fails()
@@ -700,7 +751,7 @@ class TestHandleHttpErrorsLogging:
 
     @pytest.mark.asyncio
     async def test_logs_404_as_debug(
-        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+        self, httpx_mock: HTTPXMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Test that 404 errors are logged at debug level."""
         import logging
@@ -727,7 +778,7 @@ class TestHandleHttpErrorsLogging:
 
     @pytest.mark.asyncio
     async def test_logs_non_404_status_errors(
-        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+        self, httpx_mock: HTTPXMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Test that non-404 HTTP status errors are logged with details."""
         import logging
@@ -755,7 +806,7 @@ class TestHandleHttpErrorsLogging:
 
     @pytest.mark.asyncio
     async def test_logs_general_http_errors(
-        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+        self, httpx_mock: HTTPXMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Test that general HTTP errors are logged."""
         import logging
@@ -776,7 +827,9 @@ class TestHandleHttpErrorsLogging:
         assert any("HTTP error" in record.message for record in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_logs_unexpected_exceptions(self, caplog: pytest.LogCaptureFixture) -> None:
+    async def test_logs_unexpected_exceptions(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Test that unexpected exceptions are logged."""
         import logging
 
@@ -784,12 +837,15 @@ class TestHandleHttpErrorsLogging:
 
         @handle_http_errors(default_return=None, log_errors=True)
         async def raises_unexpected() -> dict:
-            raise RuntimeError("Unexpected error")
+            msg = "Unexpected error"
+            raise RuntimeError(msg)
 
         result = await raises_unexpected()
 
         assert result is None
-        assert any("unexpected error" in record.message.lower() for record in caplog.records)
+        assert any(
+            "unexpected error" in record.message.lower() for record in caplog.records
+        )
 
 
 class TestFetchJsonErrorPaths:
@@ -797,7 +853,7 @@ class TestFetchJsonErrorPaths:
 
     @pytest.mark.asyncio
     async def test_fetch_json_logs_404(
-        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+        self, httpx_mock: HTTPXMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Test fetch_json logs 404 at debug level."""
         import logging
@@ -814,7 +870,7 @@ class TestFetchJsonErrorPaths:
 
     @pytest.mark.asyncio
     async def test_fetch_json_logs_non_404_errors(
-        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+        self, httpx_mock: HTTPXMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Test fetch_json logs non-404 HTTP errors."""
         import logging
@@ -831,7 +887,7 @@ class TestFetchJsonErrorPaths:
 
     @pytest.mark.asyncio
     async def test_fetch_json_logs_connection_errors(
-        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+        self, httpx_mock: HTTPXMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Test fetch_json logs connection errors."""
         import logging
@@ -848,7 +904,7 @@ class TestFetchJsonErrorPaths:
 
     @pytest.mark.asyncio
     async def test_fetch_json_logs_unexpected_exceptions(
-        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+        self, httpx_mock: HTTPXMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Test fetch_json logs unexpected exceptions."""
         import logging
@@ -870,7 +926,7 @@ class TestPostJsonErrorPaths:
 
     @pytest.mark.asyncio
     async def test_post_json_logs_http_errors(
-        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+        self, httpx_mock: HTTPXMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Test post_json logs HTTP errors."""
         import logging
@@ -887,7 +943,7 @@ class TestPostJsonErrorPaths:
 
     @pytest.mark.asyncio
     async def test_post_json_logs_unexpected_exceptions(
-        self, httpx_mock: "HTTPXMock", caplog: pytest.LogCaptureFixture
+        self, httpx_mock: HTTPXMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Test post_json logs unexpected exceptions."""
         import logging

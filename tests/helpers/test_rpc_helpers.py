@@ -1,7 +1,8 @@
 """Tests for standalone RPC helper functions."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.helpers.rpc import RPCClient, batch_get_balance_changes
 
@@ -22,7 +23,11 @@ class TestBatchGetBalanceChanges:
         mock_response.json.return_value = [
             {"jsonrpc": "2.0", "id": 0, "result": "0xde0b6b3a7640000"},  # 1 ETH before
             {"jsonrpc": "2.0", "id": 1, "result": "0x1bc16d674ec80000"},  # 2 ETH after
-            {"jsonrpc": "2.0", "id": 2, "result": "0x2b5e3af16b1880000"},  # 3 ETH before
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": "0x2b5e3af16b1880000",
+            },  # 3 ETH before
             {"jsonrpc": "2.0", "id": 3, "result": "0x3782dace9d900000"},  # 4 ETH after
         ]
         mock_http_client.post.return_value = mock_response
@@ -45,7 +50,7 @@ class TestBatchGetBalanceChanges:
         assert ("0xaddress2", 1001) in results
 
         # Check balance changes are calculated
-        before1, after1, change1 = results[("0xaddress1", 1000)]
+        before1, after1, change1 = results["0xaddress1", 1000]
         assert before1 == 1000000000000000000
         assert after1 == 2000000000000000000
         assert change1 == 1000000000000000000

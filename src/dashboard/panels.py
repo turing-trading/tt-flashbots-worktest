@@ -1,6 +1,6 @@
 """Helper functions for creating Grafana panels."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from grafanalib.core import (
     BarChart,
@@ -9,7 +9,6 @@ from grafanalib.core import (
     RowPanel,
     Stat,
     Table,
-    Target,
     TimeSeries,
 )
 
@@ -25,16 +24,18 @@ def create_row(title: str, y: int, collapsed: bool = False) -> RowPanel:
     Returns:
         RowPanel object
     """
-    return RowPanel(title=title, gridPos=GridPos(h=1, w=24, x=0, y=y), collapsed=collapsed)
+    return RowPanel(
+        title=title, gridPos=GridPos(h=1, w=24, x=0, y=y), collapsed=collapsed
+    )
 
 
 def create_sql_target(
     query: str,
     ref_id: str = "A",
     hide: bool = False,
-    interval: Optional[str] = None,
-    max_data_points: Optional[int] = None,
-) -> Dict[str, Any]:
+    interval: str | None = None,
+    max_data_points: int | None = None,
+) -> dict[str, Any]:
     """Create a SQL target for PostgreSQL datasource.
 
     Args:
@@ -47,7 +48,7 @@ def create_sql_target(
     Returns:
         Target dictionary
     """
-    target_params: Dict[str, Any] = {
+    target_params: dict[str, Any] = {
         "rawSql": query,
         "refId": ref_id,
         "hide": hide,
@@ -75,8 +76,8 @@ def create_pie_chart(
     unit: str = "percent",
     pie_type: str = "donut",
     reduce_fields: str = "",
-    transformations: Optional[List[Dict[str, Any]]] = None,
-    overrides: Optional[List[Dict[str, Any]]] = None,
+    transformations: list[dict[str, Any]] | None = None,
+    overrides: list[dict[str, Any]] | None = None,
     **kwargs: Any,
 ) -> PieChartv2:
     """Create a pie chart panel.
@@ -110,7 +111,7 @@ def create_pie_chart(
         legendDisplayMode="list",
         reduceOptionsCalcs=["lastNotNull"],
         reduceOptionsFields=reduce_fields,
-        reduceOptionsValues=True if reduce_fields else False,
+        reduceOptionsValues=bool(reduce_fields),
         transformations=transformations or [],
         overrides=overrides or [],
         **kwargs,
@@ -128,9 +129,9 @@ def create_time_series(
     unit: str = "percent",
     interval: str = "10m",
     max_data_points: int = 300,
-    stacking_mode: Optional[str] = None,
-    transformations: Optional[List[Dict[str, Any]]] = None,
-    overrides: Optional[List[Dict[str, Any]]] = None,
+    stacking_mode: str | None = None,
+    transformations: list[dict[str, Any]] | None = None,
+    overrides: list[dict[str, Any]] | None = None,
     **kwargs: Any,
 ) -> TimeSeries:
     """Create a time series panel.
@@ -155,15 +156,14 @@ def create_time_series(
         TimeSeries object
     """
     # Build stacking configuration
-    if stacking_mode:
-        stacking_config = {"group": "A", "mode": stacking_mode}
-    else:
-        stacking_config = {}
+    stacking_config = {"group": "A", "mode": stacking_mode} if stacking_mode else {}
 
     return TimeSeries(
         title=title,
         description=description,
-        targets=[create_sql_target(query, interval=interval, max_data_points=max_data_points)],
+        targets=[
+            create_sql_target(query, interval=interval, max_data_points=max_data_points)
+        ],
         gridPos=GridPos(h=h, w=w, x=x, y=y),
         unit=unit,
         stacking=stacking_config,
@@ -182,8 +182,9 @@ def create_bar_chart(
     w: int = 12,
     h: int = 15,
     unit: str = "percent",
-    query2: Optional[str] = None,
-    transformations: Optional[List[Dict[str, Any]]] = None,
+    x_field: str | None = None,
+    query2: str | None = None,
+    transformations: list[dict[str, Any]] | None = None,
     **kwargs: Any,
 ) -> BarChart:
     """Create a bar chart panel.
@@ -197,6 +198,7 @@ def create_bar_chart(
         w: Width in grid units (default 12)
         h: Height in grid units (default 15)
         unit: Unit for values (default "percent") - applied via overrides
+        x_field: Field name to use for X-axis (required for bar charts)
         query2: Optional second SQL query (for merge transformations)
         transformations: List of transformation dictionaries
         **kwargs: Additional arguments to pass to BarChart
@@ -215,6 +217,13 @@ def create_bar_chart(
     if query2:
         targets.append(create_sql_target(query2, ref_id="B"))
 
+    # Add extraJson for options that aren't in grafanalib's BarChart
+    extra_json: dict[str, Any] = {}
+    if x_field:
+        extra_json["options"] = extra_json.get("options", {})
+        extra_json["options"]["xField"] = x_field
+        extra_json["options"]["xTickLabelSpacing"] = 100
+
     return BarChart(
         title=title,
         description=description,
@@ -222,6 +231,8 @@ def create_bar_chart(
         gridPos=GridPos(h=h, w=w, x=x, y=y),
         overrides=overrides,
         transformations=transformations or [],
+        fillOpacity=80,
+        extraJson=extra_json or None,
         **kwargs,
     )
 
@@ -235,7 +246,8 @@ def create_stat(
     w: int = 12,
     h: int = 7,
     unit: str = "none",
-    transformations: Optional[List[Dict[str, Any]]] = None,
+    color: str | None = None,
+    transformations: list[dict[str, Any]] | None = None,
     **kwargs: Any,
 ) -> Stat:
     """Create a stat panel.
@@ -249,12 +261,25 @@ def create_stat(
         w: Width in grid units (default 12)
         h: Height in grid units (default 7)
         unit: Unit for values (default "none") - called "format" in Stat
+        color: Color for the stat panel (e.g., "green", "red", "blue")
         transformations: List of transformation dictionaries
         **kwargs: Additional arguments to pass to Stat
 
     Returns:
         Stat object
     """
+    # Use extraJson to set thresholds with color
+    extra_json = {}
+    if color:
+        extra_json["fieldConfig"] = {
+            "defaults": {
+                "thresholds": {
+                    "mode": "absolute",
+                    "steps": [{"color": color, "value": None}],
+                }
+            }
+        }
+
     return Stat(
         title=title,
         description=description,
@@ -262,6 +287,7 @@ def create_stat(
         gridPos=GridPos(h=h, w=w, x=x, y=y),
         format=unit,  # Stat uses "format" not "unit"
         transformations=transformations or [],
+        extraJson=extra_json or None,
         **kwargs,
     )
 

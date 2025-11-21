@@ -34,7 +34,7 @@ class IntegrityTestBase:
 
     async def assert_no_duplicates(
         self,
-        session: "AsyncSession",
+        session: AsyncSession,
         table: str,
         columns: list[str],
         max_violations: int = 10,
@@ -68,7 +68,7 @@ class IntegrityTestBase:
 
     async def assert_foreign_key_integrity(
         self,
-        session: "AsyncSession",
+        session: AsyncSession,
         child_table: str,
         child_column: str,
         parent_table: str,
@@ -105,7 +105,7 @@ class IntegrityTestBase:
 
     async def assert_field_format(
         self,
-        session: "AsyncSession",
+        session: AsyncSession,
         table: str,
         column: str,
         pattern: str,
@@ -140,7 +140,7 @@ class IntegrityTestBase:
 
     async def assert_non_negative(
         self,
-        session: "AsyncSession",
+        session: AsyncSession,
         table: str,
         column: str,
         max_violations: int = 10,
@@ -171,7 +171,7 @@ class IntegrityTestBase:
 
     async def assert_field_consistency(
         self,
-        session: "AsyncSession",
+        session: AsyncSession,
         table: str,
         field1: str,
         field2: str,
@@ -219,7 +219,7 @@ class IntegrityTestBase:
         assert len(violations) == 0, msg
 
     async def get_count(
-        self, session: "AsyncSession", table: str, where: str | None = None
+        self, session: AsyncSession, table: str, where: str | None = None
     ) -> int:
         """Get row count from table with optional WHERE clause.
 
@@ -239,7 +239,7 @@ class IntegrityTestBase:
         return result.scalar() or 0
 
     async def get_distinct_count(
-        self, session: "AsyncSession", table: str, column: str
+        self, session: AsyncSession, table: str, column: str
     ) -> int:
         """Get count of distinct values in column.
 

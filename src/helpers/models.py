@@ -16,16 +16,18 @@ class BlockHeader(BaseModel):
         ..., description="Block timestamp as hex string", alias="timestamp"
     )
     extra_data: str | None = Field(
-        None, description="Extra data field", alias="extraData"
+        default=None, description="Extra data field", alias="extraData"
     )
     gas_limit: str | None = Field(
-        None, description="Gas limit as hex string", alias="gasLimit"
+        default=None, description="Gas limit as hex string", alias="gasLimit"
     )
     gas_used: str | None = Field(
-        None, description="Gas used as hex string", alias="gasUsed"
+        default=None, description="Gas used as hex string", alias="gasUsed"
     )
     base_fee_per_gas: str | None = Field(
-        None, description="Base fee per gas as hex string", alias="baseFeePerGas"
+        default=None,
+        description="Base fee per gas as hex string",
+        alias="baseFeePerGas",
     )
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)

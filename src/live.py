@@ -22,7 +22,7 @@ import json
 import signal
 import sys
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import asyncio
 
@@ -38,6 +38,12 @@ from src.data.blocks.models import Block
 from src.data.builders.db import BuilderBalancesDB, ExtraBuilderBalanceDB
 from src.data.builders.known_builder_addresses import KNOWN_BUILDER_ADDRESSES
 from src.data.builders.models import BuilderBalance, ExtraBuilderBalance
+from src.data.live_models import (
+    AdjustmentData,
+    BuilderBalanceData,
+    ExtraBuilderBalanceData,
+    RelayData,
+)
 from src.data.relays.constants import RELAYS
 from src.data.relays.db import RelaysPayloadsDB
 from src.data.relays.models import RelaysPayloads
@@ -52,6 +58,7 @@ from src.helpers.parsers import (
     wei_to_eth,
 )
 from src.helpers.rpc import RPCClient
+from src.helpers.rpc_models import EthGetBlockByNumberRequest
 
 
 if TYPE_CHECKING:
@@ -277,7 +284,7 @@ class LiveProcessor:
 
             # Stage 5: Fetch Ultrasound adjustment if applicable
             # First extract slot from relay data
-            slot = relay_data[0].get("slot") if relay_data else None
+            slot = relay_data[0].slot if relay_data else None
             adjustment_data = await self._fetch_ultrasound_adjustment(slot, relay_data)
 
             # Stage 6: Compute/insert analysis (using data from previous stages)
@@ -309,14 +316,14 @@ class LiveProcessor:
         try:
             logger.debug("Fetching block #%s from RPC...", block_number)
             # Fetch full block via RPC
-            rpc_request = {
-                "jsonrpc": "2.0",
-                "method": "eth_getBlockByNumber",
-                "params": [hex(block_number), False],  # False = only tx hashes
-                "id": 1,
-            }
+            rpc_request = EthGetBlockByNumberRequest(
+                params=[hex(block_number), False],  # False = only tx hashes
+                id=1,
+            )
 
-            response = await self.http_client.post(self.rpc_url, json=rpc_request)
+            response = await self.http_client.post(
+                self.rpc_url, json=rpc_request.model_dump()
+            )
             response.raise_for_status()
             result = response.json()
 
@@ -367,7 +374,7 @@ class LiveProcessor:
 
     async def _store_builder_balance(
         self, block_number: int, miner_address: str | None
-    ) -> dict[str, Any] | None:
+    ) -> BuilderBalanceData | None:
         """Calculate and store builder balance change.
 
         Args:
@@ -375,7 +382,7 @@ class LiveProcessor:
             miner_address: Builder/miner address.
 
         Returns:
-            Dictionary with balance data if successful, None otherwise.
+            BuilderBalanceData if successful, None otherwise.
         """
         try:
             if not miner_address:
@@ -413,9 +420,7 @@ class LiveProcessor:
                 f"{wei_to_eth(balance_increase):.4f}",
             )
 
-            return {
-                "balance_increase": balance_increase,
-            }
+            return BuilderBalanceData(balance_increase=balance_increase)
 
         except Exception:
             logger.exception(
@@ -425,7 +430,7 @@ class LiveProcessor:
 
     async def _store_relay_payloads_with_retry(
         self, block_number: int
-    ) -> list[dict[str, Any]]:
+    ) -> list[RelayData]:
         """Store relay payloads with delayed retries only (no immediate fetch).
 
         Wait 5 minutes first, then try fetching every minute until 10 minutes total:
@@ -441,9 +446,9 @@ class LiveProcessor:
             block_number: Block number.
 
         Returns:
-            List of relay data dictionaries.
+            List of RelayData models.
         """
-        relay_data: list[dict[str, Any]] = []
+        relay_data: list[RelayData] = []
         max_total_minutes = 10
         initial_wait_minutes = 5
 
@@ -491,22 +496,22 @@ class LiveProcessor:
                 elapsed_minutes,
             )
 
-        found_relays = [r["relay"] for r in relay_data] if relay_data else []
+        found_relays = [r.relay for r in relay_data] if relay_data else []
         if found_relays:
             self.relays_processed += len(found_relays)
             logger.info("Stored relay payloads for block #%s", block_number)
         return relay_data
 
-    async def _store_relay_payloads(self, block_number: int) -> list[dict[str, Any]]:
+    async def _store_relay_payloads(self, block_number: int) -> list[RelayData]:
         """Fetch and store relay payloads for a block.
 
         Args:
             block_number: Block number.
 
         Returns:
-            List of relay data dictionaries with relay name and value.
+            List of RelayData models.
         """
-        relay_data_list: list[dict[str, Any]] = []
+        relay_data_list: list[RelayData] = []
 
         try:
             # Query all relays concurrently
@@ -545,10 +550,13 @@ class LiveProcessor:
                         )
 
                         # Track this relay data for analysis
-                        relay_data_list.append({
-                            "relay": relay,
-                            "value": payload.value,
-                        })
+                        relay_data_list.append(
+                            RelayData(
+                                relay=relay,
+                                value=payload.value,
+                                slot=payload.slot,
+                            )
+                        )
 
                     except Exception:
                         logger.exception(
@@ -584,7 +592,7 @@ class LiveProcessor:
         try:
             response = await self.http_client.get(url)
             response.raise_for_status()
-            json_data: list[Any] = response.json()
+            json_data = response.json()
 
             # Validate each payload with Pydantic
             validated_payloads: list[RelaysPayloads] = []
@@ -608,7 +616,7 @@ class LiveProcessor:
 
     async def _fetch_extra_builder_balances(
         self, block_number: int, miner_address: str
-    ) -> list[dict[str, Any]]:
+    ) -> list[ExtraBuilderBalanceData]:
         """Fetch and store extra builder balance increases for known builder addresses.
 
         Args:
@@ -616,7 +624,7 @@ class LiveProcessor:
             miner_address: The builder/miner address
 
         Returns:
-            List of balance increase dicts for builder addresses
+            List of ExtraBuilderBalanceData models
         """
         try:
             # Check if this miner has known builder addresses
@@ -625,7 +633,7 @@ class LiveProcessor:
                 return []
 
             # Fetch and store balances for all builder addresses
-            balance_data: list[dict[str, Any]] = []
+            balance_data: list[ExtraBuilderBalanceData] = []
             for builder_address in builder_addresses:
                 # Get balance change using RPC client helper
                 (
@@ -652,10 +660,12 @@ class LiveProcessor:
                     pydantic_models=[extra_builder_balance],
                 )
 
-                balance_data.append({
-                    "builder_address": builder_address,
-                    "balance_increase": balance_increase,
-                })
+                balance_data.append(
+                    ExtraBuilderBalanceData(
+                        builder_address=builder_address,
+                        balance_increase=balance_increase,
+                    )
+                )
 
             logger.info(
                 "Stored %s extra builder balances for block #%s",
@@ -672,23 +682,23 @@ class LiveProcessor:
             return []
 
     async def _fetch_ultrasound_adjustment(
-        self, slot: int | None, relay_data: list[dict[str, Any]]
-    ) -> dict[str, Any] | None:
+        self, slot: int | None, relay_data: list[RelayData]
+    ) -> AdjustmentData | None:
         """Fetch and store Ultrasound adjustment data if Ultrasound relay is present.
 
         Args:
             slot: Beacon chain slot number
-            relay_data: List of relay payload dicts
+            relay_data: List of RelayData models
 
         Returns:
-            Dict with delta (relay fee) or None if not available
+            AdjustmentData with delta (relay fee) or None if not available
         """
         if slot is None or not relay_data:
             return None
 
         # Check if Ultrasound relay is in the relay data
         ultrasound_relay = "relay-analytics.ultrasound.money"
-        has_ultrasound = any(r.get("relay") == ultrasound_relay for r in relay_data)
+        has_ultrasound = any(r.relay == ultrasound_relay for r in relay_data)
 
         if not has_ultrasound:
             return None
@@ -750,7 +760,7 @@ class LiveProcessor:
                     slot,
                     wei_to_eth(delta_value),
                 )
-                return {"delta": delta_value}
+                return AdjustmentData(delta=delta_value)
 
             return None
 
@@ -766,10 +776,10 @@ class LiveProcessor:
         block_number: int,
         block_timestamp: datetime,
         extra_data: str,
-        balance_data: dict[str, Any] | None,
-        relay_data: list[dict[str, Any]],
-        extra_builder_data: list[dict[str, Any]],
-        adjustment_data: dict[str, Any] | None,
+        balance_data: BuilderBalanceData | None,
+        relay_data: list[RelayData],
+        extra_builder_data: list[ExtraBuilderBalanceData],
+        adjustment_data: AdjustmentData | None,
     ) -> None:
         """Compute and store PBS analysis V3 using data from previous stages.
 
@@ -779,14 +789,14 @@ class LiveProcessor:
             block_number: Block number.
             block_timestamp: Block timestamp.
             extra_data: Block extra_data for builder name parsing.
-            balance_data: Balance data from builder step.
-            relay_data: Relay data from relay step.
-            extra_builder_data: Extra builder balance data.
-            adjustment_data: Ultrasound adjustment data with delta (relay fee).
+            balance_data: BuilderBalanceData from builder step.
+            relay_data: List of RelayData models from relay step.
+            extra_builder_data: List of ExtraBuilderBalanceData models.
+            adjustment_data: AdjustmentData with delta (relay fee).
         """
         try:
             # Process relay data
-            relays_list = [r["relay"] for r in relay_data] if relay_data else None
+            relays_list = [r.relay for r in relay_data] if relay_data else None
             n_relays = len(relay_data) if relay_data else 0
             is_block_vanilla = n_relays == 0
 
@@ -794,25 +804,25 @@ class LiveProcessor:
             proposer_subsidy = 0.0
             slot = None
             if relay_data:
-                max_value = max(r["value"] for r in relay_data)
+                max_value = max(r.value for r in relay_data)
                 proposer_subsidy = wei_to_eth(max_value) or 0.0
                 # Get slot from first relay (all relays have same slot for a block)
-                slot = relay_data[0].get("slot")
+                slot = relay_data[0].slot
 
             # Get builder balance increase
             builder_balance_increase = 0.0
             if balance_data:
                 builder_balance_increase = (
-                    wei_to_eth(balance_data["balance_increase"]) or 0.0
+                    wei_to_eth(balance_data.balance_increase) or 0.0
                 )
 
             # Calculate builder extra transfers (only positive values)
             builder_extra_transfers = 0.0
             if extra_builder_data:
                 positive_transfers = [
-                    d["balance_increase"]
+                    d.balance_increase
                     for d in extra_builder_data
-                    if d["balance_increase"] > 0
+                    if d.balance_increase > 0
                 ]
                 if positive_transfers:
                     builder_extra_transfers = sum(
@@ -821,8 +831,8 @@ class LiveProcessor:
 
             # Get relay fee from adjustment data (if available)
             relay_fee = None
-            if adjustment_data and adjustment_data.get("delta") is not None:
-                relay_fee = wei_to_eth(adjustment_data["delta"])
+            if adjustment_data:
+                relay_fee = wei_to_eth(adjustment_data.delta)
 
             # Calculate total value including all components
             total_value = (

@@ -3,12 +3,12 @@
 import json
 from pathlib import Path
 
-from grafanalib._gen import DashboardEncoder
+from grafanalib._gen import DashboardEncoder  # noqa: PLC2701
 
 from src.dashboard.dashboard import generate_dashboard
 
 
-def main():
+def main() -> None:
     """Generate the dashboard JSON and save it to a file."""
     # Generate the dashboard
     dashboard = generate_dashboard()
@@ -26,9 +26,6 @@ def main():
 
     # Write to file
     output_path.write_text(dashboard_json)
-
-    print(f"Dashboard JSON generated successfully: {output_path}")
-    print(f"Size: {len(dashboard_json)} bytes")
 
 
 if __name__ == "__main__":

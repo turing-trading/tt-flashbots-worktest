@@ -1,6 +1,7 @@
 """Shared progress bar utilities for Rich console displays."""
 
 from contextlib import contextmanager
+
 from typing import TYPE_CHECKING
 
 from rich.progress import (
@@ -119,10 +120,10 @@ def create_simple_progress(
 def track_progress(
     description: str,
     total: int,
-    console: "Console | None" = None,
+    console: Console | None = None,
     *,
     show_time_remaining: bool = True,
-) -> "Iterator[tuple[Progress, TaskID]]":
+) -> Iterator[tuple[Progress, TaskID]]:
     """Context manager for tracking progress with automatic cleanup.
 
     This is a convenience wrapper that creates a progress bar, adds a task,

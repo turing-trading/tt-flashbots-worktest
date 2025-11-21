@@ -1,8 +1,8 @@
 """Tests for logging configuration."""
 
-import logging
-
 import pytest
+
+import logging
 
 from src.helpers.logging import get_logger
 
@@ -116,6 +116,7 @@ class TestGetLogger:
         assert any("Warning message" in record.message for record in caplog.records)
         assert any("Error message" in record.message for record in caplog.records)
 
+
 class TestLoggingIntegration:
     """Integration tests for logging functionality."""
 
@@ -130,8 +131,12 @@ class TestLoggingIntegration:
             logger1.info("Message from module1")
             logger2.info("Message from module2")
 
-        assert any("Message from module1" in record.message for record in caplog.records)
-        assert any("Message from module2" in record.message for record in caplog.records)
+        assert any(
+            "Message from module1" in record.message for record in caplog.records
+        )
+        assert any(
+            "Message from module2" in record.message for record in caplog.records
+        )
 
     def test_logger_name_hierarchy(self) -> None:
         """Test logger name hierarchy."""

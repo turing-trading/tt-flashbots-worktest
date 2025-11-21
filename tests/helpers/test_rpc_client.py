@@ -1,8 +1,10 @@
 """Tests for RPC client."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
+
 import httpx
-from unittest.mock import AsyncMock, MagicMock, Mock
 
 from src.helpers.rpc import RPCClient
 
@@ -39,7 +41,11 @@ class TestRPCClient:
         client = RPCClient("https://test.rpc")
         mock_http_client = AsyncMock(spec=httpx.AsyncClient)
         mock_response = MagicMock()
-        mock_response.json.return_value = {"jsonrpc": "2.0", "id": 1, "result": "0x1000"}
+        mock_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": "0x1000",
+        }
         mock_http_client.post.return_value = mock_response
 
         result = await client.call(mock_http_client, "eth_blockNumber")
@@ -60,7 +66,9 @@ class TestRPCClient:
         }
         mock_http_client.post.return_value = mock_response
 
-        result = await client.call(mock_http_client, "eth_getBlockByNumber", ["0x1", True])
+        result = await client.call(
+            mock_http_client, "eth_getBlockByNumber", ["0x1", True]
+        )
 
         assert result["number"] == "0x1"
 
@@ -196,8 +204,8 @@ class TestRPCClient:
         mock_response = MagicMock()
         mock_response.json.return_value = [
             {"id": 0, "result": "0x1"},  # Valid result
-            {"id": 1, "result": None},   # Null result
-            {"id": 2, "result": ""},     # Empty result
+            {"id": 1, "result": None},  # Null result
+            {"id": 2, "result": ""},  # Empty result
         ]
         mock_http_client.post.return_value = mock_response
 
@@ -209,10 +217,10 @@ class TestRPCClient:
         balance_map = await client.batch_get_balances(mock_http_client, requests)
 
         # Valid result should be parsed
-        assert balance_map[("0xaddr1", 100)] == 1
+        assert balance_map["0xaddr1", 100] == 1
         # Null and empty results should default to 0
-        assert balance_map[("0xaddr2", 100)] == 0
-        assert balance_map[("0xaddr3", 100)] == 0
+        assert balance_map["0xaddr2", 100] == 0
+        assert balance_map["0xaddr3", 100] == 0
 
     @pytest.mark.asyncio
     async def test_get_balances_batch_exception_returns_zeros(self) -> None:
@@ -230,5 +238,5 @@ class TestRPCClient:
         balance_map = await client.batch_get_balances(mock_http_client, requests)
 
         # All requests should have zero balance on error
-        assert balance_map[("0xaddr1", 100)] == 0
-        assert balance_map[("0xaddr2", 200)] == 0
+        assert balance_map["0xaddr1", 100] == 0
+        assert balance_map["0xaddr2", 200] == 0
