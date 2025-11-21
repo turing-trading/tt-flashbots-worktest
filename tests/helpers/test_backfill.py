@@ -1,6 +1,7 @@
 """Tests for backfill functionality."""
 
 import pytest
+
 from rich.console import Console
 
 from src.helpers.backfill import BackfillBase
@@ -9,9 +10,14 @@ from src.helpers.backfill import BackfillBase
 class ConcreteBackfill(BackfillBase):
     """Concrete implementation of BackfillBase for testing."""
 
-    async def run(self, *args: object, **kwargs: object) -> None:
-        """Simple run implementation for testing."""
-        return None
+    async def run(self, *_args: object, **_kwargs: object) -> None:
+        """Simple run implementation for testing.
+
+        Args:
+            _args: Unused positional arguments
+            _kwargs: Unused keyword arguments
+        """
+        return
 
 
 class TestBackfillBase:
@@ -159,7 +165,7 @@ class TestRelayConstants:
 
         assert isinstance(ENDPOINTS, dict)
         assert len(ENDPOINTS) > 0
-        assert all(isinstance(k, str) for k in ENDPOINTS.keys())
+        assert all(isinstance(k, str) for k in ENDPOINTS)
         assert all(isinstance(v, str) for v in ENDPOINTS.values())
 
     def test_relay_limits_exist(self) -> None:
@@ -168,7 +174,7 @@ class TestRelayConstants:
 
         assert isinstance(LIMITS, dict)
         assert len(LIMITS) > 0
-        assert all(isinstance(k, str) for k in LIMITS.keys())
+        assert all(isinstance(k, str) for k in LIMITS)
         assert all(isinstance(v, int) for v in LIMITS.values())
 
     def test_relay_name_mapping_exists(self) -> None:
@@ -176,7 +182,7 @@ class TestRelayConstants:
         from src.data.relays.constants import RELAY_NAME_MAPPING
 
         assert isinstance(RELAY_NAME_MAPPING, dict)
-        assert all(isinstance(k, str) for k in RELAY_NAME_MAPPING.keys())
+        assert all(isinstance(k, str) for k in RELAY_NAME_MAPPING)
         assert all(isinstance(v, str) for v in RELAY_NAME_MAPPING.values())
 
     def test_beacon_endpoint_exists(self) -> None:

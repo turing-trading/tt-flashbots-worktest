@@ -1,19 +1,6 @@
 {
-  "exclude": [
-    "**/__pycache__",
-    "**/.pytest_cache",
-    "**/.ruff_cache",
-    "**/.mypy_cache",
-    "**/node_modules",
-    "**/.venv",
-    "**/venv",
-    "build",
-    "dist",
-    ".git",
-    "**/*.pyc",
-    "**/*.pyo",
-  ],
-  "typeCheckingMode": "strict",
-  "pythonVersion": "3.14",
-  "pythonPlatform": "All",
+  "include": ["src", "tests"],
+  "typeCheckingMode": "basic",
+  "reportMissingTypeStubs": false,
+  "stubPath": "./typings"
 }

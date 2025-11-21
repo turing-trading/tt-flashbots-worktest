@@ -2,6 +2,8 @@
 
 from abc import ABC, abstractmethod
 
+from typing import Any
+
 from rich.console import Console
 
 from src.helpers.db import create_tables
@@ -37,11 +39,15 @@ class BackfillBase(ABC):
         await create_tables()
 
     @abstractmethod
-    async def run(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+    async def run(self, *args: Any, **kwargs: Any) -> None:
         """Run the backfill process.
 
         This method must be implemented by subclasses to define
         their specific backfill logic and orchestration.
+
+        Args:
+            *args: Variable positional arguments
+            **kwargs: Variable keyword arguments
         """
         ...
 

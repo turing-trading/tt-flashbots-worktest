@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 import io
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 import asyncio
 from asyncio import run
@@ -28,6 +28,7 @@ from src.helpers.constants import (
 from src.helpers.db import AsyncSessionLocal, upsert_models
 from src.helpers.parsers import parse_hex_int, parse_hex_timestamp, wei_to_eth
 from src.helpers.progress import create_simple_progress
+from src.helpers.rpc_models import EthBlockNumberRequest, EthGetBlockByNumberRequest
 
 
 if TYPE_CHECKING:
@@ -90,12 +91,12 @@ class BackfillBlocks(BackfillBase):
         return {row[0] for row in result.fetchall()}
 
     async def _add_checkpoint(
-        self, session: AsyncSession, date: str, block_count: int
+        self, _session: AsyncSession, date: str, block_count: int
     ) -> None:
         """Add a checkpoint for a successfully processed date.
 
         Args:
-            session: Database session
+            _session: Database session (unused, kept for interface compatibility)
             date: Date string in YYYY-MM-DD format
             block_count: Number of blocks processed for this date
         """
@@ -192,8 +193,13 @@ class BackfillBlocks(BackfillBase):
             blocks.append(block)
         return blocks
 
-    async def _store_blocks(self, session: AsyncSession, blocks: list[Block]) -> None:
-        """Store blocks in the database using batch upsert."""
+    async def _store_blocks(self, _session: AsyncSession, blocks: list[Block]) -> None:
+        """Store blocks in the database using batch upsert.
+
+        Args:
+            _session: Database session (unused, kept for interface compatibility)
+            blocks: List of blocks to store
+        """
         if not blocks:
             return
 
@@ -216,14 +222,11 @@ class BackfillBlocks(BackfillBase):
             msg = "ETH_RPC_URL must be configured to fetch missing blocks"
             raise ValueError(msg)
 
-        payload: dict[str, Any] = {
-            "jsonrpc": "2.0",
-            "method": "eth_blockNumber",
-            "params": [],
-            "id": 1,
-        }
+        payload = EthBlockNumberRequest(id=1)
 
-        response = await client.post(self.eth_rpc_url, json=payload, timeout=30.0)
+        response = await client.post(
+            self.eth_rpc_url, json=payload.model_dump(), timeout=30.0
+        )
         response.raise_for_status()
         result = response.json()
         return int(result["result"], 16)
@@ -360,22 +363,20 @@ class BackfillBlocks(BackfillBase):
             raise ValueError(msg)
 
         # Build batch JSON-RPC request
-        batch_payload: list[dict[str, Any]] = []
+        batch_payload: list[EthGetBlockByNumberRequest] = []
         for idx, block_number in enumerate(block_numbers):
-            batch_payload.append({
-                "jsonrpc": "2.0",
-                "method": "eth_getBlockByNumber",
-                "params": [
-                    hex(block_number),
-                    False,
-                ],  # False = don't include transactions
-                "id": idx,
-            })
+            batch_payload.append(
+                EthGetBlockByNumberRequest(
+                    # False = don't include transactions
+                    params=[hex(block_number), False],
+                    id=idx,
+                )
+            )
 
         try:
             response = await client.post(
                 self.eth_rpc_url,
-                json=batch_payload,
+                json=[req.model_dump() for req in batch_payload],
                 timeout=60.0,  # Increased timeout for batch requests
             )
             response.raise_for_status()

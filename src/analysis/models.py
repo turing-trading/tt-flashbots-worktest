@@ -37,14 +37,14 @@ class AnalysisPBSV3(BaseModel):
     )
     n_relays: int = Field(default=0, description="Number of relays used for this block")
     relays: list[str] | None = Field(
-        None, description="List of relay names from relays_payloads table"
+        default=None, description="List of relay names from relays_payloads table"
     )
     builder_name: str = Field(
         default="unknown",
         description="Builder name from builders_identifiers table",
     )
     slot: int | None = Field(
-        None,
+        default=None,
         description=(
             "Beacon chain slot number from relays_payloads table "
             "(null for vanilla blocks)"
@@ -58,7 +58,7 @@ class AnalysisPBSV3(BaseModel):
         ),
     )
     relay_fee: float | None = Field(
-        None,
+        default=None,
         description=(
             "Relay fee in ETH from ultrasound_adjustments table "
             "(only for Ultrasound relay)"

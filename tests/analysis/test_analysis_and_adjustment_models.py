@@ -1,6 +1,6 @@
 """Tests for analysis and adjustment models."""
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from src.analysis.models import AnalysisPBSV3
 from src.data.adjustments.models import UltrasoundAdjustment

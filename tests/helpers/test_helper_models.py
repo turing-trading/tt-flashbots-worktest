@@ -1,9 +1,6 @@
 """Tests for helper Pydantic models."""
 
-from datetime import datetime, UTC
-
-import pytest
-from pydantic import ValidationError
+from datetime import UTC, datetime
 
 from src.helpers.models import AdjustmentResponse, AggregatedBlockData, BlockHeader
 

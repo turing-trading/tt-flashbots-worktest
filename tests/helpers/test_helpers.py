@@ -86,8 +86,8 @@ class TestParsers:
 
     def test_parse_hex_block_number(self) -> None:
         """Test parsing block number from header."""
-        from src.helpers.parsers import parse_hex_block_number
         from src.helpers.models import BlockHeader
+        from src.helpers.parsers import parse_hex_block_number
 
         header = BlockHeader(
             number="0x3e8",  # 1000 in hex

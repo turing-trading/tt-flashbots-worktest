@@ -1,20 +1,22 @@
 """Pytest configuration and shared fixtures for data integrity tests."""
 
 import os
-import time
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
+
+from typing import TYPE_CHECKING
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
 
 from src.helpers.db import AsyncSessionLocal, Base
 
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
+
     from pytest_docker.plugin import Services
 
 
@@ -32,19 +34,26 @@ def pytest_collection_modifyitems(
 @pytest.fixture(scope="session")
 def docker_compose_file(pytestconfig: pytest.Config) -> str:
     """Provide the path to docker-compose.yml for pytest-docker."""
-    return os.path.join(str(pytestconfig.rootdir), "tests", "docker-compose.test.yml")
+    from typing import cast
+
+    # pytestconfig.rootdir exists at runtime but not in type stubs
+    # Use getattr to avoid pyright error about unknown attribute
+    rootdir = cast("Path", getattr(pytestconfig, "rootdir"))  # noqa: B009
+    return str(rootdir / "tests" / "docker-compose.test.yml")
 
 
 @pytest.fixture(scope="session")
-def timescaledb_service(docker_services: "Services") -> None:
+def timescaledb_service(docker_services: Services) -> None:
     """Ensure TimescaleDB service is up and responsive.
 
     Args:
         docker_services: pytest-docker services fixture
     """
+
     def is_responsive() -> bool:
         """Check if TimescaleDB is responsive."""
         import psycopg
+
         try:
             conn = psycopg.connect(
                 host="localhost",
@@ -67,7 +76,7 @@ def timescaledb_service(docker_services: "Services") -> None:
 
 
 @pytest.fixture(scope="session")
-def timescaledb_url(docker_services: "Services", timescaledb_service: None) -> str:
+def timescaledb_url(docker_services: Services, timescaledb_service: None) -> str:
     """Get TimescaleDB connection URL.
 
     Args:
@@ -78,11 +87,13 @@ def timescaledb_url(docker_services: "Services", timescaledb_service: None) -> s
         Database connection URL
     """
     port = docker_services.port_for("timescaledb", 5432)
-    return f"postgresql+psycopg://test_user:test_password@localhost:{port}/test_flashbots"
+    return (
+        f"postgresql+psycopg://test_user:test_password@localhost:{port}/test_flashbots"
+    )
 
 
 @pytest_asyncio.fixture
-async def test_db_engine(timescaledb_url: str) -> "AsyncGenerator[AsyncSession]":
+async def test_db_engine(timescaledb_url: str) -> AsyncGenerator[AsyncSession]:
     """Create test database engine with all tables.
 
     Args:
@@ -103,7 +114,9 @@ async def test_db_engine(timescaledb_url: str) -> "AsyncGenerator[AsyncSession]"
         await conn.run_sync(Base.metadata.create_all)
 
     # Create session
-    async_session_maker = sessionmaker(
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    async_session_maker = async_sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False
     )
 
@@ -119,7 +132,7 @@ async def test_db_engine(timescaledb_url: str) -> "AsyncGenerator[AsyncSession]"
 
 
 @pytest_asyncio.fixture
-async def async_session() -> "AsyncGenerator[AsyncSession]":
+async def async_session() -> AsyncGenerator[AsyncSession]:
     """Provide async database session for integration tests.
 
     Note: This uses the same database connection as the application.

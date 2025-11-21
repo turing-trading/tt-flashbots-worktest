@@ -1,10 +1,11 @@
 """Tests for database operations and helpers."""
 
-from datetime import datetime, UTC, timedelta
-from decimal import Decimal
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime, timedelta
 
 import pytest
+
+from typing import TYPE_CHECKING
+
 from sqlalchemy import select
 
 from src.data.blocks.db import BlockDB
@@ -28,7 +29,7 @@ class TestUpsertModels:
     """Tests for upsert_models helper function."""
 
     @pytest.mark.asyncio
-    async def test_insert_new_block(self, test_db_engine: "AsyncSession") -> None:
+    async def test_insert_new_block(self, test_db_engine: AsyncSession) -> None:
         """Test inserting a new block record."""
         block = Block(
             number=1,
@@ -56,14 +57,16 @@ class TestUpsertModels:
         )
 
         # Verify insertion
-        result = await test_db_engine.execute(select(BlockDB).where(BlockDB.number == 1))
+        result = await test_db_engine.execute(
+            select(BlockDB).where(BlockDB.number == 1)
+        )
         db_block = result.scalar_one()
         assert db_block.number == 1
         assert db_block.hash == "0x1234567890abcdef"
         assert db_block.miner == "0xminer"
 
     @pytest.mark.asyncio
-    async def test_upsert_existing_block(self, test_db_engine: "AsyncSession") -> None:
+    async def test_upsert_existing_block(self, test_db_engine: AsyncSession) -> None:
         """Test upserting an existing block updates it."""
         # Insert initial block
         block1 = Block(
@@ -84,7 +87,9 @@ class TestUpsertModels:
             base_fee_per_gas=0,
             extra_data="0x",
         )
-        await upsert_models(db_model_class=BlockDB, pydantic_models=[block1], session=test_db_engine)
+        await upsert_models(
+            db_model_class=BlockDB, pydantic_models=[block1], session=test_db_engine
+        )
 
         # Upsert with new data
         block2 = Block(
@@ -105,10 +110,14 @@ class TestUpsertModels:
             base_fee_per_gas=0,
             extra_data="0x",
         )
-        await upsert_models(db_model_class=BlockDB, pydantic_models=[block2], session=test_db_engine)
+        await upsert_models(
+            db_model_class=BlockDB, pydantic_models=[block2], session=test_db_engine
+        )
 
         # Verify update
-        result = await test_db_engine.execute(select(BlockDB).where(BlockDB.number == 1))
+        result = await test_db_engine.execute(
+            select(BlockDB).where(BlockDB.number == 1)
+        )
         db_block = result.scalar_one()
         assert db_block.hash == "0xnewhash"
         assert db_block.miner == "0xnewminer"
@@ -119,13 +128,13 @@ class TestUpsertModels:
         assert len(count_result.all()) == 1
 
     @pytest.mark.asyncio
-    async def test_insert_multiple_blocks(self, test_db_engine: "AsyncSession") -> None:
+    async def test_insert_multiple_blocks(self, test_db_engine: AsyncSession) -> None:
         """Test inserting multiple blocks at once."""
         blocks = [
             Block(
                 number=i,
                 hash=f"0x{i:064x}",
-                parent_hash=f"0x{i-1:064x}" if i > 0 else "0x0",
+                parent_hash=f"0x{i - 1:064x}" if i > 0 else "0x0",
                 nonce="0x0000000000000000",
                 sha3_uncles="0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
                 transactions_root="0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
@@ -133,7 +142,8 @@ class TestUpsertModels:
                 receipts_root="0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
                 miner=f"0xminer{i}",
                 size=1000,
-                timestamp=datetime(2015, 7, 30, 15, 26, 28, tzinfo=UTC) + timedelta(seconds=i * 15),
+                timestamp=datetime(2015, 7, 30, 15, 26, 28, tzinfo=UTC)
+                + timedelta(seconds=i * 15),
                 gas_used=21000 * i,
                 gas_limit=5000000,
                 transaction_count=i,
@@ -143,7 +153,9 @@ class TestUpsertModels:
             for i in range(1, 6)
         ]
 
-        await upsert_models(db_model_class=BlockDB, pydantic_models=blocks, session=test_db_engine)
+        await upsert_models(
+            db_model_class=BlockDB, pydantic_models=blocks, session=test_db_engine
+        )
 
         # Verify all inserted
         result = await test_db_engine.execute(select(BlockDB))
@@ -152,7 +164,7 @@ class TestUpsertModels:
         assert {b.number for b in db_blocks} == {1, 2, 3, 4, 5}
 
     @pytest.mark.asyncio
-    async def test_insert_with_extra_fields(self, test_db_engine: "AsyncSession") -> None:
+    async def test_insert_with_extra_fields(self, test_db_engine: AsyncSession) -> None:
         """Test inserting with extra fields parameter."""
         payload = RelaysPayloads(
             slot=100,
@@ -189,13 +201,13 @@ class TestBuilderBalancesDB:
     """Tests for BuilderBalancesDB model."""
 
     @pytest.mark.asyncio
-    async def test_insert_builder_balance(self, test_db_engine: "AsyncSession") -> None:
+    async def test_insert_builder_balance(self, test_db_engine: AsyncSession) -> None:
         """Test inserting builder balance record."""
         balance = BuilderBalance(
             block_number=1000,
             miner="0xminer",
             balance_before=100500000000000000000,  # 100.5 ETH in Wei
-            balance_after=101500000000000000000,   # 101.5 ETH in Wei
+            balance_after=101500000000000000000,  # 101.5 ETH in Wei
             balance_increase=1000000000000000000,  # 1.0 ETH in Wei
         )
 
@@ -217,17 +229,21 @@ class TestBuilderBalancesDB:
         assert db_balance.balance_increase == 1000000000000000000
 
     @pytest.mark.asyncio
-    async def test_balance_fields_mixin(self, test_db_engine: "AsyncSession") -> None:
+    async def test_balance_fields_mixin(self, test_db_engine: AsyncSession) -> None:
         """Test that balance fields mixin works correctly."""
         # Test BuilderBalancesDB
         balance1 = BuilderBalance(
             block_number=100,
             miner="0xbuilder1",
-            balance_before=50000000000000000000,   # 50.0 ETH in Wei
-            balance_after=55000000000000000000,    # 55.0 ETH in Wei
+            balance_before=50000000000000000000,  # 50.0 ETH in Wei
+            balance_after=55000000000000000000,  # 55.0 ETH in Wei
             balance_increase=5000000000000000000,  # 5.0 ETH in Wei
         )
-        await upsert_models(db_model_class=BuilderBalancesDB, pydantic_models=[balance1], session=test_db_engine)
+        await upsert_models(
+            db_model_class=BuilderBalancesDB,
+            pydantic_models=[balance1],
+            session=test_db_engine,
+        )
 
         # Test ExtraBuilderBalanceDB
         balance2 = ExtraBuilderBalance(
@@ -235,11 +251,13 @@ class TestBuilderBalancesDB:
             builder_address="0xextra",
             miner="0xbuilder2",
             balance_before=100000000000000000000,  # 100.0 ETH in Wei
-            balance_after=110000000000000000000,   # 110.0 ETH in Wei
-            balance_increase=10000000000000000000, # 10.0 ETH in Wei
+            balance_after=110000000000000000000,  # 110.0 ETH in Wei
+            balance_increase=10000000000000000000,  # 10.0 ETH in Wei
         )
         await upsert_models(
-            db_model_class=ExtraBuilderBalanceDB, pydantic_models=[balance2], session=test_db_engine
+            db_model_class=ExtraBuilderBalanceDB,
+            pydantic_models=[balance2],
+            session=test_db_engine,
         )
 
         # Verify both use same balance field structure
@@ -268,7 +286,7 @@ class TestRelaysPayloadsDB:
     """Tests for RelaysPayloadsDB model."""
 
     @pytest.mark.asyncio
-    async def test_insert_relay_payload(self, test_db_engine: "AsyncSession") -> None:
+    async def test_insert_relay_payload(self, test_db_engine: AsyncSession) -> None:
         """Test inserting relay payload record."""
         payload = RelaysPayloads(
             slot=12345,
@@ -303,7 +321,7 @@ class TestRelaysPayloadsDB:
         assert db_payload.value == 2500000000000000000
 
     @pytest.mark.asyncio
-    async def test_upsert_relay_payload(self, test_db_engine: "AsyncSession") -> None:
+    async def test_upsert_relay_payload(self, test_db_engine: AsyncSession) -> None:
         """Test upserting relay payload updates existing record."""
         # Insert initial payload
         payload1 = RelaysPayloads(
@@ -366,14 +384,14 @@ class TestDatabaseIntegration:
     """Integration tests for database operations."""
 
     @pytest.mark.asyncio
-    async def test_complex_upsert_scenario(self, test_db_engine: "AsyncSession") -> None:
+    async def test_complex_upsert_scenario(self, test_db_engine: AsyncSession) -> None:
         """Test complex scenario with multiple inserts and updates."""
         # Insert multiple blocks
         blocks = [
             Block(
                 number=i,
                 hash=f"0x{i:064x}",
-                parent_hash=f"0x{i-1:064x}" if i > 0 else "0x0",
+                parent_hash=f"0x{i - 1:064x}" if i > 0 else "0x0",
                 nonce="0x0000000000000000",
                 sha3_uncles="0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
                 transactions_root="0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
@@ -381,7 +399,8 @@ class TestDatabaseIntegration:
                 receipts_root="0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
                 miner=f"0xminer{i}",
                 size=1000,
-                timestamp=datetime(2015, 7, 30, 15, 26, 28, tzinfo=UTC) + timedelta(seconds=i * 15),
+                timestamp=datetime(2015, 7, 30, 15, 26, 28, tzinfo=UTC)
+                + timedelta(seconds=i * 15),
                 gas_used=21000 * i,
                 gas_limit=5000000,
                 transaction_count=i,
@@ -390,14 +409,16 @@ class TestDatabaseIntegration:
             )
             for i in range(1, 11)
         ]
-        await upsert_models(db_model_class=BlockDB, pydantic_models=blocks, session=test_db_engine)
+        await upsert_models(
+            db_model_class=BlockDB, pydantic_models=blocks, session=test_db_engine
+        )
 
         # Update some blocks
         updated_blocks = [
             Block(
                 number=i,
                 hash=f"0xnew{i:060x}",  # 0x + new + 60 hex chars = 65 chars total
-                parent_hash=f"0x{i-1:064x}" if i > 0 else "0x0",
+                parent_hash=f"0x{i - 1:064x}" if i > 0 else "0x0",
                 nonce="0x0000000000000000",
                 sha3_uncles="0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
                 transactions_root="0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
@@ -405,7 +426,8 @@ class TestDatabaseIntegration:
                 receipts_root="0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
                 miner=f"0xnewminer{i}",
                 size=1000,
-                timestamp=datetime(2015, 7, 30, 15, 26, 28, tzinfo=UTC) + timedelta(seconds=i * 15),
+                timestamp=datetime(2015, 7, 30, 15, 26, 28, tzinfo=UTC)
+                + timedelta(seconds=i * 15),
                 gas_used=42000 * i,
                 gas_limit=5000000,
                 transaction_count=i,
@@ -414,7 +436,11 @@ class TestDatabaseIntegration:
             )
             for i in range(1, 6)
         ]
-        await upsert_models(db_model_class=BlockDB, pydantic_models=updated_blocks, session=test_db_engine)
+        await upsert_models(
+            db_model_class=BlockDB,
+            pydantic_models=updated_blocks,
+            session=test_db_engine,
+        )
 
         # Verify total count (should still be 10)
         result = await test_db_engine.execute(select(BlockDB))
@@ -441,7 +467,7 @@ class TestDatabaseIntegration:
             assert block.gas_used == 21000 * block.number
 
     @pytest.mark.asyncio
-    async def test_transaction_rollback(self, test_db_engine: "AsyncSession") -> None:
+    async def test_transaction_rollback(self, test_db_engine: AsyncSession) -> None:
         """Test that failed operations don't leave partial data."""
         # Insert valid block
         block1 = Block(
@@ -462,8 +488,12 @@ class TestDatabaseIntegration:
             base_fee_per_gas=0,
             extra_data="0x",
         )
-        await upsert_models(db_model_class=BlockDB, pydantic_models=[block1], session=test_db_engine)
+        await upsert_models(
+            db_model_class=BlockDB, pydantic_models=[block1], session=test_db_engine
+        )
 
         # Verify insertion
-        result = await test_db_engine.execute(select(BlockDB).where(BlockDB.number == 1))
+        result = await test_db_engine.execute(
+            select(BlockDB).where(BlockDB.number == 1)
+        )
         assert result.scalar_one() is not None

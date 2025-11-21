@@ -2,7 +2,6 @@
 
 from io import StringIO
 
-import pytest
 from rich.console import Console
 from rich.progress import Progress
 
@@ -229,9 +228,10 @@ class TestProgressIntegration:
         batch_size = 20
         batches = [items[i : i + batch_size] for i in range(0, len(items), batch_size)]
 
-        with track_progress(
-            "Processing items", total=len(items), console=console
-        ) as (progress, task_id):
+        with track_progress("Processing items", total=len(items), console=console) as (
+            progress,
+            task_id,
+        ):
             for batch_num, batch in enumerate(batches, start=1):
                 # Process batch (simulated)
                 processed = len(batch)

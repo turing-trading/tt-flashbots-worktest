@@ -16,6 +16,7 @@ exclude = [
     ".venv",
     "venv",
     "node_modules",
+    "typings",
 ]
 
 [lint]

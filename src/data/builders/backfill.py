@@ -12,7 +12,11 @@ from src.data.builders.db import BuilderBalancesDB
 from src.data.builders.models import BuilderBalance
 from src.helpers.backfill import BackfillBase
 from src.helpers.config import get_eth_rpc_url
-from src.helpers.constants import DB_BATCH_SIZE, DEFAULT_PARALLEL_BATCHES, RPC_BATCH_SIZE
+from src.helpers.constants import (
+    DB_BATCH_SIZE,
+    DEFAULT_PARALLEL_BATCHES,
+    RPC_BATCH_SIZE,
+)
 from src.helpers.db import AsyncSessionLocal, upsert_models
 from src.helpers.progress import create_standard_progress
 from src.helpers.rpc import RPCClient, batch_get_balance_changes

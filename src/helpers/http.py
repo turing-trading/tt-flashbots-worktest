@@ -1,10 +1,11 @@
 """HTTP client utilities and helpers."""
 
-from asyncio import sleep
 from contextlib import asynccontextmanager
 from functools import wraps
 
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, ParamSpec, TypeVar
+
+from asyncio import sleep
 
 import httpx
 
@@ -20,11 +21,12 @@ from src.helpers.logging import get_logger
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
 
-
-logger = get_logger(__name__)
+    from src.helpers.http_models import JsonResponse
 
 P = ParamSpec("P")
 T = TypeVar("T")
+
+logger = get_logger(__name__)
 
 
 def retry_with_backoff(
@@ -121,7 +123,8 @@ def retry_with_backoff(
 
 
 def create_http_client(
-    timeout: float = DEFAULT_TIMEOUT, **kwargs: Any
+    timeout: float = DEFAULT_TIMEOUT,
+    **kwargs,  # noqa: ANN003
 ) -> httpx.AsyncClient:
     """Create a configured httpx AsyncClient.
 
@@ -143,7 +146,7 @@ def create_http_client(
     return httpx.AsyncClient(timeout=timeout, **kwargs)
 
 
-def handle_http_errors(
+def handle_http_errors[T, **P](
     default_return: T | None = None,
     *,
     log_errors: bool = True,
@@ -208,7 +211,7 @@ async def fetch_json(
     *,
     timeout: float | None = None,
     raise_for_status: bool = True,
-) -> dict[str, Any] | list[Any] | None:
+) -> JsonResponse:
     """Fetch JSON data from a URL.
 
     Args:
@@ -250,11 +253,11 @@ async def fetch_json(
 async def post_json(
     client: httpx.AsyncClient,
     url: str,
-    data: dict[str, Any],
+    data: dict[str, object],
     *,
     timeout: float | None = None,
     raise_for_status: bool = True,
-) -> dict[str, Any] | list[Any] | None:
+) -> JsonResponse:
     """Post JSON data to a URL and return JSON response.
 
     Args:
@@ -291,7 +294,7 @@ async def post_json(
 
 
 @asynccontextmanager
-async def log_and_suppress_errors(
+async def log_and_suppress_errors(  # noqa: RUF029
     operation_name: str,
     *,
     log_level: str = "warning",

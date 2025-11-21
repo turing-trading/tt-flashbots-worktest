@@ -194,7 +194,9 @@ async def upsert_models[DBModelType](
         # Create new session (for production)
         async with AsyncSessionLocal() as new_session:
             try:
-                await _perform_upsert(db_model_class, pydantic_models, extra_fields, new_session)
+                await _perform_upsert(
+                    db_model_class, pydantic_models, extra_fields, new_session
+                )
             except Exception:
                 await new_session.rollback()
                 raise

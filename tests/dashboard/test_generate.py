@@ -1,9 +1,7 @@
 """End-to-end test for dashboard generation."""
 
-import pytest
 
-
-def test_dashboard_generate_main():
+def test_dashboard_generate_main() -> None:
     """Test that generate.py main() runs successfully."""
     from src.dashboard.generate import main
 
