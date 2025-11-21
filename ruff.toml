@@ -139,6 +139,9 @@ ignore = [
     "INP001",
 ]
 "**/conftest.py" = ["PLW0603", "ARG001", "ANN001", "S106", "S101"]
+# Allow print statements in CLI scripts
+"src/dashboard/update_dashboard.py" = ["T201", "PLR0911"]
+"src/dashboard/generate.py" = ["T201"]
 [lint.pydocstyle]
 convention = "google"
 

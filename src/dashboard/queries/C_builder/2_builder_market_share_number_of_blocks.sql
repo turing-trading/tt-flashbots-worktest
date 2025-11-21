@@ -98,4 +98,4 @@ SELECT
     ROUND((ac.blocks_built::numeric / tpt.total * 100), 2) as market_share_pct
 FROM aggregated_counts ac
 JOIN total_per_time tpt ON ac.time = tpt.time
-ORDER BY ac.time, ac.blocks_built DESC;
+ORDER BY ac.time, ac.builder_name;

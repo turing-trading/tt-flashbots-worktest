@@ -132,6 +132,9 @@ def create_time_series(
     stacking_mode: str | None = None,
     transformations: list[dict[str, Any]] | None = None,
     overrides: list[dict[str, Any]] | None = None,
+    axis_scale_type: str | None = None,
+    tooltip_mode: str = "multi",
+    tooltip_sort: str = "none",
     **kwargs: Any,
 ) -> TimeSeries:
     """Create a time series panel.
@@ -150,6 +153,9 @@ def create_time_series(
         stacking_mode: Stacking mode ("normal", "percent", or None for no stacking)
         transformations: List of transformation dictionaries
         overrides: List of field override dictionaries
+        axis_scale_type: Y-axis scale type ("linear", "log", or None for default)
+        tooltip_mode: Tooltip mode ("single", "multi", "none") (default "multi")
+        tooltip_sort: Tooltip sort order ("none", "asc", "desc") (default "none")
         **kwargs: Additional arguments to pass to TimeSeries
 
     Returns:
@@ -157,6 +163,29 @@ def create_time_series(
     """
     # Build stacking configuration
     stacking_config = {"group": "A", "mode": stacking_mode} if stacking_mode else {}
+
+    # Build extraJson for axis scale and tooltip configuration
+    extra_json = kwargs.pop("extraJson", {})
+
+    # Configure axis scale if specified
+    if axis_scale_type:
+        extra_json["fieldConfig"] = extra_json.get("fieldConfig", {})
+        extra_json["fieldConfig"]["defaults"] = extra_json["fieldConfig"].get(
+            "defaults", {}
+        )
+        extra_json["fieldConfig"]["defaults"]["custom"] = extra_json["fieldConfig"][
+            "defaults"
+        ].get("custom", {})
+        extra_json["fieldConfig"]["defaults"]["custom"]["scaleDistribution"] = {
+            "type": axis_scale_type
+        }
+
+    # Configure tooltip
+    extra_json["options"] = extra_json.get("options", {})
+    extra_json["options"]["tooltip"] = {
+        "mode": tooltip_mode,
+        "sort": tooltip_sort,
+    }
 
     return TimeSeries(
         title=title,
@@ -169,6 +198,7 @@ def create_time_series(
         stacking=stacking_config,
         transformations=transformations or [],
         overrides=overrides or [],
+        extraJson=extra_json or None,
         **kwargs,
     )
 
@@ -185,6 +215,8 @@ def create_bar_chart(
     x_field: str | None = None,
     query2: str | None = None,
     transformations: list[dict[str, Any]] | None = None,
+    axis_max: float | None = None,
+    axis_min: float | None = None,
     **kwargs: Any,
 ) -> BarChart:
     """Create a bar chart panel.
@@ -201,24 +233,38 @@ def create_bar_chart(
         x_field: Field name to use for X-axis (required for bar charts)
         query2: Optional second SQL query (for merge transformations)
         transformations: List of transformation dictionaries
+        axis_max: Maximum value for Y-axis (default None for auto)
+        axis_min: Minimum value for Y-axis (default None for auto)
         **kwargs: Additional arguments to pass to BarChart
 
     Returns:
         BarChart object
     """
-    # BarChart doesn't have a unit parameter, but we can add it via overrides
+    # BarChart doesn't have a unit parameter, add it via extraJson fieldConfig
     overrides = kwargs.pop("overrides", [])
-    if unit != "percent":
-        # Add unit override if needed
-        pass
 
     # Build targets list
     targets = [create_sql_target(query, ref_id="A")]
     if query2:
         targets.append(create_sql_target(query2, ref_id="B"))
 
-    # Add extraJson for options that aren't in grafanalib's BarChart
+    # Add extraJson for options and fieldConfig that aren't in grafanalib's BarChart
     extra_json: dict[str, Any] = {}
+
+    # Add unit configuration
+    extra_json["fieldConfig"] = extra_json.get("fieldConfig", {})
+    extra_json["fieldConfig"]["defaults"] = extra_json["fieldConfig"].get(
+        "defaults", {}
+    )
+    extra_json["fieldConfig"]["defaults"]["unit"] = unit
+
+    # Add axis min/max configuration if specified
+    if axis_max is not None:
+        extra_json["fieldConfig"]["defaults"]["max"] = axis_max
+    if axis_min is not None:
+        extra_json["fieldConfig"]["defaults"]["min"] = axis_min
+
+    # Add x-axis field configuration if specified
     if x_field:
         extra_json["options"] = extra_json.get("options", {})
         extra_json["options"]["xField"] = x_field
