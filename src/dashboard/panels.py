@@ -133,8 +133,10 @@ def create_time_series(
     transformations: list[dict[str, Any]] | None = None,
     overrides: list[dict[str, Any]] | None = None,
     axis_scale_type: str | None = None,
+    axis_max: float | None = None,
+    axis_min: float | None = None,
     tooltip_mode: str = "multi",
-    tooltip_sort: str = "none",
+    tooltip_sort: str = "desc",
     **kwargs: Any,
 ) -> TimeSeries:
     """Create a time series panel.
@@ -154,8 +156,10 @@ def create_time_series(
         transformations: List of transformation dictionaries
         overrides: List of field override dictionaries
         axis_scale_type: Y-axis scale type ("linear", "log", or None for default)
+        axis_max: Maximum value for Y-axis (default None for auto)
+        axis_min: Minimum value for Y-axis (default None for auto)
         tooltip_mode: Tooltip mode ("single", "multi", "none") (default "multi")
-        tooltip_sort: Tooltip sort order ("none", "asc", "desc") (default "none")
+        tooltip_sort: Tooltip sort order ("none", "asc", "desc") (default "desc")
         **kwargs: Additional arguments to pass to TimeSeries
 
     Returns:
@@ -167,12 +171,15 @@ def create_time_series(
     # Build extraJson for axis scale and tooltip configuration
     extra_json = kwargs.pop("extraJson", {})
 
-    # Configure axis scale if specified
-    if axis_scale_type:
+    # Initialize fieldConfig if needed for any configuration
+    if axis_scale_type or axis_max is not None or axis_min is not None:
         extra_json["fieldConfig"] = extra_json.get("fieldConfig", {})
         extra_json["fieldConfig"]["defaults"] = extra_json["fieldConfig"].get(
             "defaults", {}
         )
+
+    # Configure axis scale if specified
+    if axis_scale_type:
         extra_json["fieldConfig"]["defaults"]["custom"] = extra_json["fieldConfig"][
             "defaults"
         ].get("custom", {})
@@ -180,9 +187,16 @@ def create_time_series(
             "type": axis_scale_type
         }
 
+    # Configure axis min/max if specified
+    if axis_max is not None:
+        extra_json["fieldConfig"]["defaults"]["max"] = axis_max
+    if axis_min is not None:
+        extra_json["fieldConfig"]["defaults"]["min"] = axis_min
+
     # Configure tooltip
     extra_json["options"] = extra_json.get("options", {})
     extra_json["options"]["tooltip"] = {
+        "hideZeros": False,
         "mode": tooltip_mode,
         "sort": tooltip_sort,
     }
@@ -217,6 +231,7 @@ def create_bar_chart(
     transformations: list[dict[str, Any]] | None = None,
     axis_max: float | None = None,
     axis_min: float | None = None,
+    orientation: str = "auto",
     **kwargs: Any,
 ) -> BarChart:
     """Create a bar chart panel.
@@ -235,6 +250,7 @@ def create_bar_chart(
         transformations: List of transformation dictionaries
         axis_max: Maximum value for Y-axis (default None for auto)
         axis_min: Minimum value for Y-axis (default None for auto)
+        orientation: Bar orientation ("auto", "horizontal", "vertical")
         **kwargs: Additional arguments to pass to BarChart
 
     Returns:
@@ -269,6 +285,11 @@ def create_bar_chart(
         extra_json["options"] = extra_json.get("options", {})
         extra_json["options"]["xField"] = x_field
         extra_json["options"]["xTickLabelSpacing"] = 100
+
+    # Add orientation configuration
+    if orientation != "auto":
+        extra_json["options"] = extra_json.get("options", {})
+        extra_json["options"]["orientation"] = orientation
 
     return BarChart(
         title=title,

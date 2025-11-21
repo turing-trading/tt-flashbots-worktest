@@ -66,7 +66,14 @@ def get_database_url() -> str:
 
 # Create async engine and session factory
 DATABASE_URL = get_database_url()
-async_engine = create_async_engine(DATABASE_URL, echo=False)
+async_engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    connect_args={
+        "connect_timeout": 10,  # Connection timeout in seconds (psycopg3)
+    },
+    pool_pre_ping=True,  # Test connections before using them
+)
 
 AsyncSessionLocal = async_sessionmaker(
     async_engine,
