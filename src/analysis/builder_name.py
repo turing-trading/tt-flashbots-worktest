@@ -21,17 +21,23 @@ BUILDER_NAME_MAPPING = {
     "Beaver": "BuilderNet (Beaver)",
     "Nethermind": "BuilderNet (Nethermind)",
     "BuilderNet (Beaver)": "BuilderNet (Beaver)",  # Keep as-is
+    # Flashbots Illuminate variants
+    "Illuminate Dmocratize Dstribute": "BuilderNet (Flashbots)",
+    "Illuminate Dmocrtz Dstrib Prtct": "BuilderNet (Flashbots)",
     # Quasar variants -> Quasar
     "quasar.win": "Quasar",
     # Beaver variants -> BuilderNet (Beaver)
     "beaverbuild.org": "BuilderNet (Beaver)",
     # Rsync variants -> Rsync
     "rsyncbuilder": "Rsync",
+    "rsync-builder.xyz": "Rsync",
     # Bob The Builder variants
     "bobTheBuilder.xyz": "Bob The Builder",
     # 0x69 builder variants
     "by @builder": "0x69",
     "by builder": "0x69",
+    "builder0x69": "0x69",
+    "@builder0x69": "0x69",
     # IO Builder variants
     "iobuilder.xyz": "IO Builder",
     # Eureka variants
@@ -51,7 +57,8 @@ BUILDER_NAME_MAPPING = {
     # Besu variants (development versions)
     "besu-develop-": "besu",
     "besu-develop-e": "besu",
-    # bloXroute -> bloXroute (standardize capitalization)
+    # bloXroute variants
+    "Powered by bloXroute": "bloXroute",
     # Generic/unknown builders
     "builder": "unknown",
     "MevRefund -": "unknown",  # Troll message, not a real builder
@@ -85,6 +92,14 @@ def clean_builder_name(
     # Check for BTCS (case-insensitive)
     if "btcs" in builder_name.lower():
         return "BTCS"
+
+    # Check for 0x69 builder variants before cleaning (which would strip the suffix)
+    if "builder0x69" in builder_name or "@builder0x69" in builder_name:
+        return "0x69"
+
+    # Check for penguin builder variants before cleaning
+    if "penguinbuild" in builder_name.lower():
+        return "Penguin"
 
     # Apply advanced cleaning if requested (used by backfill processes)
     if apply_advanced_cleaning:

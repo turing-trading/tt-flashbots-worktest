@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 
 # Default to process last year of data
-START_DATE: datetime = datetime.now(tz=UTC) - timedelta(days=3)
+START_DATE: datetime = datetime.now(tz=UTC) - timedelta(days=1)
 # 2024-01-01
 # START_DATE = datetime(2024, 2, 1)
 END_DATE: datetime | None = datetime.now(tz=UTC) - timedelta(minutes=10)
@@ -161,9 +161,7 @@ class BackfillAnalysisPBSV3(BackfillBase):
                 BuilderBalancesDB,
                 BlockDB.number == BuilderBalancesDB.block_number,
             )
-            .outerjoin(
-                RelaysPayloadsDB, BlockDB.hash == RelaysPayloadsDB.block_hash
-            )
+            .outerjoin(RelaysPayloadsDB, BlockDB.hash == RelaysPayloadsDB.block_hash)
             .outerjoin(
                 extra_transfers_subq,
                 BlockDB.number == extra_transfers_subq.c.block_number,

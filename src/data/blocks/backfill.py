@@ -519,7 +519,9 @@ class BackfillBlocks(BackfillBase):
         blocks = self._dataframe_to_blocks(df)
 
         # Store in database
-        await self._store_blocks(session, blocks)
+        for i in range(0, len(blocks), self.batch_size):
+            batch = blocks[i : i + self.batch_size]
+            await self._store_blocks(session, batch)
 
         # Add checkpoint for this date
         await self._add_checkpoint(session, date, len(blocks))
