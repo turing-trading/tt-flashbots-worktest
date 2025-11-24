@@ -137,6 +137,10 @@ def generate_dashboard() -> Dashboard:
             stacking_mode="normal",
             axisSoftMin=0,
             axisSoftMax=100,
+            show_points="never",
+            connect_null_values="always",
+            fill_opacity=30,
+            line_interpolation="smooth",
             transformations=[
                 {
                     "id": "groupingToMatrix",
@@ -192,6 +196,10 @@ def generate_dashboard() -> Dashboard:
             axis_min=0,
             axisSoftMin=0,
             axisSoftMax=100,
+            show_points="never",
+            connect_null_values="always",
+            fill_opacity=30,
+            line_interpolation="smooth",
             transformations=[
                 {
                     "id": "groupingToMatrix",
@@ -235,6 +243,10 @@ def generate_dashboard() -> Dashboard:
             axis_min=0,
             axisSoftMin=0,
             axisSoftMax=100,
+            show_points="never",
+            connect_null_values="always",
+            fill_opacity=30,
+            line_interpolation="smooth",
             transformations=[
                 {
                     "id": "groupingToMatrix",
@@ -277,6 +289,9 @@ def generate_dashboard() -> Dashboard:
             h=15,
             unit="ETH",
             axis_scale_type="log",
+            show_points="never",
+            connect_null_values="always",
+            line_interpolation="smooth",
             transformations=[
                 {
                     "id": "groupingToMatrix",
@@ -377,6 +392,7 @@ def generate_dashboard() -> Dashboard:
             interval="1h",
             max_data_points=100,
             spanNulls=True,
+            line_interpolation="smooth",
             transformations=[
                 {
                     "id": "groupingToMatrix",

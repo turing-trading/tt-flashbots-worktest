@@ -137,6 +137,10 @@ def create_time_series(
     axis_min: float | None = None,
     tooltip_mode: str = "multi",
     tooltip_sort: str = "desc",
+    show_points: str = "auto",
+    connect_null_values: str = "never",
+    fill_opacity: int = 0,
+    line_interpolation: str = "linear",
     **kwargs: Any,
 ) -> TimeSeries:
     """Create a time series panel.
@@ -160,6 +164,10 @@ def create_time_series(
         axis_min: Minimum value for Y-axis (default None for auto)
         tooltip_mode: Tooltip mode ("single", "multi", "none") (default "multi")
         tooltip_sort: Tooltip sort order ("none", "asc", "desc") (default "desc")
+        show_points: Show points mode ("auto", "always", "never") (default "auto")
+        connect_null_values: Connect null values ("never", "threshold", "always") (default "never")
+        fill_opacity: Fill opacity 0-100 (default 0)
+        line_interpolation: Line interpolation mode ("linear", "smooth", "stepBefore", "stepAfter") (default "linear")
         **kwargs: Additional arguments to pass to TimeSeries
 
     Returns:
@@ -172,7 +180,15 @@ def create_time_series(
     extra_json = kwargs.pop("extraJson", {})
 
     # Initialize fieldConfig if needed for any configuration
-    if axis_scale_type or axis_max is not None or axis_min is not None:
+    if (
+        axis_scale_type
+        or axis_max is not None
+        or axis_min is not None
+        or show_points != "auto"
+        or connect_null_values != "never"
+        or fill_opacity != 0
+        or line_interpolation != "linear"
+    ):
         extra_json["fieldConfig"] = extra_json.get("fieldConfig", {})
         extra_json["fieldConfig"]["defaults"] = extra_json["fieldConfig"].get(
             "defaults", {}
@@ -186,6 +202,29 @@ def create_time_series(
         extra_json["fieldConfig"]["defaults"]["custom"]["scaleDistribution"] = {
             "type": axis_scale_type
         }
+
+    # Configure display options (show points, connect null values, fill opacity, line interpolation)
+    if (
+        show_points != "auto"
+        or connect_null_values != "never"
+        or fill_opacity != 0
+        or line_interpolation != "linear"
+    ):
+        extra_json["fieldConfig"]["defaults"]["custom"] = extra_json["fieldConfig"][
+            "defaults"
+        ].get("custom", {})
+        if show_points != "auto":
+            extra_json["fieldConfig"]["defaults"]["custom"]["showPoints"] = show_points
+        if connect_null_values != "never":
+            extra_json["fieldConfig"]["defaults"]["custom"][
+                "spanNulls"
+            ] = connect_null_values
+        if fill_opacity != 0:
+            extra_json["fieldConfig"]["defaults"]["custom"]["fillOpacity"] = fill_opacity
+        if line_interpolation != "linear":
+            extra_json["fieldConfig"]["defaults"]["custom"][
+                "lineInterpolation"
+            ] = line_interpolation
 
     # Configure axis min/max if specified
     if axis_max is not None:
