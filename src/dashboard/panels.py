@@ -558,14 +558,19 @@ class SankeyPanel(Panel):
 
     transformations: list[dict[str, Any]] = attr.ib(factory=list)
     overrides: list[dict[str, Any]] = attr.ib(factory=list)
+    unit: str | None = attr.ib(default=None)
 
     def to_json_data(self) -> dict[str, Any]:
         """Convert to JSON data for Grafana."""
+        defaults: dict[str, Any] = {}
+        if self.unit:
+            defaults["unit"] = self.unit
+
         panel_data = self.panel_json({
             "type": "netsage-sankey-panel",
             "options": {},
             "fieldConfig": {
-                "defaults": {},
+                "defaults": defaults,
                 "overrides": self.overrides,
             },
         })
@@ -586,6 +591,7 @@ def create_sankey(
     w: int = 24,
     h: int = 15,
     transformations: list[dict[str, Any]] | None = None,
+    unit: str | None = None,
     **kwargs: Any,
 ) -> SankeyPanel:
     """Create a Sankey diagram panel.
@@ -599,6 +605,7 @@ def create_sankey(
         w: Width in grid units (default 24)
         h: Height in grid units (default 15)
         transformations: List of transformation dictionaries
+        unit: Unit for the value field (e.g., "percent")
         **kwargs: Additional arguments to pass to SankeyPanel
 
     Returns:
@@ -610,5 +617,6 @@ def create_sankey(
         targets=[create_sql_target(query)],
         gridPos=GridPos(h=h, w=w, x=x, y=y),
         transformations=transformations or [],
+        unit=unit,
         **kwargs,
     )

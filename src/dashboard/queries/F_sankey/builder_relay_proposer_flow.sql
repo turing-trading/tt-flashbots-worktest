@@ -1,6 +1,6 @@
 -- Sankey flow: Builder -> Relay -> Proposer
--- Returns data showing the complete flow path with three columns
--- Filtered to top 7 builders and top 10 proposers (excluding unknown)
+-- Returns data showing the complete flow path with three columns as percentages
+-- Filtered to top 6 builders and top 10 proposers (excluding unknown)
 -- Relay names are normalized for display, proposer names are capitalized
 WITH top_builders AS (
     SELECT
@@ -47,6 +47,9 @@ unnested_flows AS (
         AND array_length(a.relays, 1) > 0
         AND a.builder_name IN (SELECT builder_name FROM top_builders)
         AND a.proposer_name IN (SELECT proposer_name FROM top_proposers)
+),
+total_count AS (
+    SELECT COUNT(*) as total FROM unnested_flows
 )
 SELECT
     builder_name as "Builder",
@@ -65,7 +68,7 @@ SELECT
         ELSE relay
     END as "Relay",
     INITCAP(proposer_name) as "Proposer",
-    COUNT(*) as "Value"
+    ROUND(100.0 * COUNT(*) / NULLIF((SELECT total FROM total_count), 0), 2) as "Value"
 FROM
     unnested_flows
 GROUP BY

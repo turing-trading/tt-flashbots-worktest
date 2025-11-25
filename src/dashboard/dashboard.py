@@ -512,7 +512,7 @@ def generate_dashboard() -> Dashboard:
             title="Builder → Relay → Proposer Flow",
             description=(
                 "Visualizes the flow of blocks from builders through relays "
-                "to proposers. The thickness of each link represents the number "
+                "to proposers. The thickness of each link represents the percentage "
                 "of blocks flowing through that path."
             ),
             query=builder_relay_proposer_flow,
@@ -520,6 +520,7 @@ def generate_dashboard() -> Dashboard:
             y=sankey_panels_y,
             w=24,
             h=20,
+            unit="percent",
         ),
         # Row 7: Negative Values
         create_row("Negative Values", negative_row_y),
