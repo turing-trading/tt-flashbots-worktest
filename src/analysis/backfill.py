@@ -30,9 +30,9 @@ if TYPE_CHECKING:
 
 
 # Default to process last year of data
-START_DATE: datetime = datetime.now(tz=UTC) - timedelta(days=1)
+# START_DATE: datetime = datetime.now(tz=UTC) - timedelta(days=1)
 # 2024-01-01
-# START_DATE = datetime(2024, 2, 1)
+START_DATE = datetime(2024, 2, 1, tzinfo=UTC)
 END_DATE: datetime | None = datetime.now(tz=UTC) - timedelta(minutes=10)
 
 

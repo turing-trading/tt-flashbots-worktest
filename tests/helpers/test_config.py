@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 from src.helpers.config import (
     get_eth_rpc_url,
     get_eth_ws_url,
+    get_grafana_api_key,
+    get_grafana_url,
     get_optional_env,
     get_required_env,
     get_required_url,
@@ -28,6 +30,8 @@ def clean_env() -> Generator[None]:
         "TEST_URL": os.environ.get("TEST_URL"),
         "ETH_RPC_URL": os.environ.get("ETH_RPC_URL"),
         "ETH_WS_URL": os.environ.get("ETH_WS_URL"),
+        "GRAFANA_API_KEY": os.environ.get("GRAFANA_API_KEY"),
+        "GRAFANA_URL": os.environ.get("GRAFANA_URL"),
     }
 
     # Clear test keys
@@ -177,3 +181,62 @@ class TestGetEthWsUrl:
             match="Ethereum WebSocket URL must be provided or set in ETH_WS_URL",
         ):
             get_eth_ws_url()
+
+
+@pytest.mark.usefixtures("clean_env")
+class TestGetGrafanaApiKey:
+    """Tests for get_grafana_api_key function."""
+
+    def test_returns_api_key_parameter(self) -> None:
+        """Test that get_grafana_api_key returns parameter when provided."""
+        api_key = "glsa_test123"
+        assert get_grafana_api_key(api_key) == api_key
+
+    def test_returns_env_value(self) -> None:
+        """Test that get_grafana_api_key returns env value."""
+        os.environ["GRAFANA_API_KEY"] = "glsa_from_env"
+        assert get_grafana_api_key() == "glsa_from_env"
+
+    def test_parameter_takes_precedence(self) -> None:
+        """Test that parameter takes precedence over env var."""
+        os.environ["GRAFANA_API_KEY"] = "glsa_from_env"
+        assert get_grafana_api_key("glsa_from_param") == "glsa_from_param"
+
+    def test_raises_when_not_provided_and_env_not_set(self) -> None:
+        """Test that get_grafana_api_key raises when no key and no env var."""
+        with pytest.raises(
+            ValueError,
+            match="Grafana API key must be provided or set in GRAFANA_API_KEY",
+        ):
+            get_grafana_api_key()
+
+    def test_raises_when_env_empty(self) -> None:
+        """Test that empty env value is treated as not set."""
+        os.environ["GRAFANA_API_KEY"] = ""
+        with pytest.raises(
+            ValueError,
+            match="Grafana API key must be provided or set in GRAFANA_API_KEY",
+        ):
+            get_grafana_api_key()
+
+
+@pytest.mark.usefixtures("clean_env")
+class TestGetGrafanaUrl:
+    """Tests for get_grafana_url function."""
+
+    def test_returns_url_parameter(self) -> None:
+        """Test that get_grafana_url returns parameter when provided."""
+        url = "https://grafana.example.com"
+        assert get_grafana_url(url) == url
+
+    def test_returns_env_value(self) -> None:
+        """Test that get_grafana_url returns env value."""
+        os.environ["GRAFANA_URL"] = "https://grafana.from-env.com"
+        assert get_grafana_url() == "https://grafana.from-env.com"
+
+    def test_raises_with_correct_message(self) -> None:
+        """Test that error message mentions Grafana URL."""
+        with pytest.raises(
+            ValueError, match="Grafana URL must be provided or set in GRAFANA_URL"
+        ):
+            get_grafana_url()

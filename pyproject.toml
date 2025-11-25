@@ -23,6 +23,8 @@ pyarrow = "^22.0.0"
 websockets = "^15.0"
 types-defusedxml = "^0.7.0.20250822"
 grafanalib = "^0.7.1"
+matplotlib = "^3.10.7"
+kaleido = "^1.2.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0"
