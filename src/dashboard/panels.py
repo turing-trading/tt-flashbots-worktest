@@ -2,9 +2,11 @@
 
 from typing import Any
 
+import attr
 from grafanalib.core import (
     BarChart,
     GridPos,
+    Panel,  # type: ignore[attr-defined]
     PieChartv2,
     RowPanel,
     Stat,
@@ -433,5 +435,118 @@ def create_table(
         description=description,
         targets=[create_sql_target(query)],
         gridPos=GridPos(h=h, w=w, x=x, y=y),
+        **kwargs,
+    )
+
+
+@attr.s
+class XYChart(Panel):
+    """XY Chart panel for scatter plots."""
+
+    xField: str = attr.ib(default="x")  # noqa: N815
+    yField: str = attr.ib(default="y")  # noqa: N815
+    colorField: str | None = attr.ib(default=None)  # noqa: N815
+    seriesMapping: str = attr.ib(default="auto")  # noqa: N815
+    unit: str = attr.ib(default="short")
+    transformations: list[dict[str, Any]] = attr.ib(factory=list)
+    overrides: list[dict[str, Any]] = attr.ib(factory=list)
+
+    def to_json_data(self) -> dict[str, Any]:
+        """Convert to JSON data for Grafana."""
+        panel_json = super().panel_json(overrides={})
+        panel_json["type"] = "xychart"
+        panel_json["fieldConfig"] = {
+            "defaults": {
+                "unit": self.unit,
+                "color": {"mode": "palette-classic-by-name"},
+                "custom": {
+                    "hideFrom": {"tooltip": False, "viz": False, "legend": False}
+                },
+            },
+            "overrides": self.overrides,
+        }
+
+        # Add transformations if specified
+        if self.transformations:
+            panel_json["transformations"] = self.transformations
+
+        # Build options with color field if specified
+        options: dict[str, Any] = {
+            "dims": {},
+            "series": [],
+            "seriesMapping": self.seriesMapping,
+            "tooltip": {"mode": "single", "sort": "none"},
+            "legend": {
+                "showLegend": True,
+                "displayMode": "list",
+                "placement": "bottom",
+            },
+        }
+
+        # Set dims based on whether we have a color field
+        if self.colorField:
+            options["dims"] = {
+                "x": self.xField,
+                "y": self.yField,
+                "color": self.colorField,
+            }
+        else:
+            options["dims"] = {
+                "x": self.xField,
+                "y": self.yField,
+            }
+
+        panel_json["options"] = options
+        return panel_json
+
+
+def create_scatter_plot(
+    title: str,
+    description: str,
+    query: str,
+    x: int,
+    y: int,
+    w: int = 12,
+    h: int = 15,
+    x_field: str = "total_value",
+    y_field: str = "proposer_subsidy",
+    color_field: str | None = None,
+    unit: str = "ETH",
+    transformations: list[dict[str, Any]] | None = None,
+    overrides: list[dict[str, Any]] | None = None,
+    **kwargs: Any,
+) -> XYChart:
+    """Create a scatter plot panel using XY Chart.
+
+    Args:
+        title: Panel title
+        description: Panel description
+        query: SQL query
+        x: X position in grid
+        y: Y position in grid
+        w: Width in grid units (default 12)
+        h: Height in grid units (default 15)
+        x_field: Field name for x-axis (default "total_value")
+        y_field: Field name for y-axis (default "proposer_subsidy")
+        color_field: Field name for coloring points (default None)
+        unit: Unit for values (default "ETH")
+        transformations: List of transformation dictionaries
+        overrides: List of field override dictionaries
+        **kwargs: Additional arguments
+
+    Returns:
+        XYChart panel
+    """
+    return XYChart(
+        title=title,
+        description=description,
+        targets=[create_sql_target(query)],
+        gridPos=GridPos(h=h, w=w, x=x, y=y),
+        xField=x_field,
+        yField=y_field,
+        colorField=color_field,
+        unit=unit,
+        transformations=transformations or [],
+        overrides=overrides or [],
         **kwargs,
     )

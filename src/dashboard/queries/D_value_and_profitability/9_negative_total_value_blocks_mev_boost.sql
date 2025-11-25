@@ -8,7 +8,7 @@ WITH builder_negative_counts AS (
     SELECT
         builder_name,
         COUNT(*) AS negative_block_count
-    FROM analysis_pbs_v3 
+    FROM analysis_pbs
     WHERE
         $__timeFilter(block_timestamp)
         AND NOT is_block_vanilla

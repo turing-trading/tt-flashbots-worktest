@@ -15,6 +15,9 @@ class RelayData(BaseModel):
     relay: str = Field(..., description="Relay name")
     value: int = Field(..., description="Payload value in wei")
     slot: int | None = Field(default=None, description="Beacon chain slot number")
+    proposer_fee_recipient: str | None = Field(
+        default=None, description="Proposer fee recipient address"
+    )
 
 
 class ExtraBuilderBalanceData(BaseModel):

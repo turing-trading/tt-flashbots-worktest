@@ -58,10 +58,10 @@ WITH builder_profits AS (
     SELECT
         $__timeGroup(block_timestamp, $__interval) as time,
         builder_name as builder_name,
-        SUM(total_value - proposer_subsidy - COALESCE(relay_fee, 0)) as total_profit_eth,
-        AVG(total_value - proposer_subsidy - COALESCE(relay_fee, 0)) as avg_profit_eth,
+        SUM(builder_profit) as total_profit_eth,
+        AVG(builder_profit) as avg_profit_eth,
         COUNT(*) as block_count
-    FROM analysis_pbs_v3
+    FROM analysis_pbs
     WHERE
         $__timeFilter(block_timestamp)
         AND NOT is_block_vanilla

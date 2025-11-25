@@ -35,9 +35,9 @@
 WITH builder_overbids AS (
     SELECT
         builder_name,
-        COUNT(*) FILTER (WHERE (total_value - proposer_subsidy - COALESCE(relay_fee, 0)) < 0) as overbid_block_count,
+        COUNT(*) FILTER (WHERE builder_profit < 0) as overbid_block_count,
         COUNT(*) as total_block_count
-    FROM analysis_pbs_v3
+    FROM analysis_pbs
     WHERE
         $__timeFilter(block_timestamp)
         AND NOT is_block_vanilla

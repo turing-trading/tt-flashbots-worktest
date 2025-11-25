@@ -40,7 +40,7 @@ histogram_data AS (
     MAX(c.hist_min) AS hist_min,
     MAX(c.hist_max) AS hist_max,
     MAX(c.hist_nbuckets) AS hist_nbuckets
-    FROM analysis_pbs_v3
+    FROM analysis_pbs
     CROSS JOIN config c
     WHERE
         $__timeFilter(block_timestamp)

@@ -37,7 +37,7 @@ WITH block_type_profits AS (
         SUM(total_value) as total_profit_eth,
         AVG(total_value) as avg_profit_eth,
         COUNT(*) as block_count
-    FROM analysis_pbs_v3
+    FROM analysis_pbs
     WHERE
         $__timeFilter(block_timestamp)
     GROUP BY is_block_vanilla

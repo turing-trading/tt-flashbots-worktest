@@ -24,7 +24,7 @@ WITH builder_counts AS (
     SELECT
         builder_name as builder_name,
         COUNT(*) as blocks_built
-    FROM analysis_pbs_v3
+    FROM analysis_pbs
     WHERE
         $__timeFilter(block_timestamp)
         AND NOT is_block_vanilla

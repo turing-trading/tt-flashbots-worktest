@@ -44,11 +44,12 @@ from src.data.live_models import (
     ExtraBuilderBalanceData,
     RelayData,
 )
+from src.data.proposers.db import ProposerMappingDB
 from src.data.relays.constants import RELAYS
 from src.data.relays.db import RelaysPayloadsDB
 from src.data.relays.models import RelaysPayloads
 from src.helpers.config import get_eth_rpc_url, get_eth_ws_url
-from src.helpers.db import upsert_models
+from src.helpers.db import AsyncSessionLocal, upsert_models
 from src.helpers.logging import get_logger
 from src.helpers.models import BlockHeader
 from src.helpers.parsers import (
@@ -86,6 +87,9 @@ class LiveProcessor:
         # Queue for block headers
         self.headers_queue: asyncio.Queue[BlockHeader] = asyncio.Queue(maxsize=100)
 
+        # Proposer mapping (proposer_fee_recipient -> label)
+        self.proposer_mapping: dict[str, str] = {}
+
         # Stats
         self.blocks_received = 0
         self.blocks_processed = 0
@@ -99,6 +103,28 @@ class LiveProcessor:
 
         # Shutdown flag
         self.should_shutdown = False
+
+    async def load_proposer_mapping(self) -> None:
+        """Load proposer mapping from database into memory."""
+        try:
+            logger.info("Loading proposer mapping from database...")
+            async with AsyncSessionLocal() as session:
+                from sqlalchemy import select
+
+                stmt = select(
+                    ProposerMappingDB.proposer_fee_recipient, ProposerMappingDB.label
+                )
+                result = await session.execute(stmt)
+                rows = result.fetchall()
+
+                self.proposer_mapping = {
+                    row.proposer_fee_recipient: row.label for row in rows
+                }
+
+            logger.info("Loaded %s proposer mappings", len(self.proposer_mapping))
+        except Exception:
+            logger.exception("Failed to load proposer mapping, continuing without it")
+            self.proposer_mapping = {}
 
     async def connect_and_subscribe(self) -> None:
         """Connect to WebSocket and subscribe to newHeads with auto-reconnect."""
@@ -555,6 +581,7 @@ class LiveProcessor:
                                 relay=relay,
                                 value=payload.value,
                                 slot=payload.slot,
+                                proposer_fee_recipient=payload.proposer_fee_recipient,
                             )
                         )
 
@@ -845,6 +872,16 @@ class LiveProcessor:
             # Parse builder name from extra_data
             builder_name = parse_builder_name_from_extra_data(extra_data)
 
+            # Get proposer name from mapping using first relay's proposer_fee_recipient
+            proposer_name = None
+            if relay_data:
+                proposer_fee_recipient = relay_data[0].proposer_fee_recipient
+                if proposer_fee_recipient:
+                    proposer_name = self.proposer_mapping.get(proposer_fee_recipient)
+
+            # Calculate builder profit
+            builder_profit = total_value - proposer_subsidy - (relay_fee or 0.0)
+
             # Create analysis model V3
             analysis = AnalysisPBSV3(
                 block_number=block_number,
@@ -859,6 +896,8 @@ class LiveProcessor:
                 slot=slot,
                 builder_extra_transfers=builder_extra_transfers,
                 relay_fee=relay_fee,
+                proposer_name=proposer_name,
+                builder_profit=builder_profit,
             )
 
             # Store in database
@@ -895,6 +934,9 @@ class LiveProcessor:
             loop.add_signal_handler(sig, self.shutdown)
 
         try:
+            # Load proposer mapping from database before starting
+            await self.load_proposer_mapping()
+
             # Start both WebSocket connection and queue consumer
             tasks = [
                 asyncio.create_task(self.connect_and_subscribe()),

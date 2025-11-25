@@ -48,6 +48,12 @@ class AggregatedBlockData(BaseModel):
     slot: int | None
     builder_extra_transfers: float
     relay_fee: float | None
+    # New fields for analysis_pbs
+    proposer_name: str | None = None
+    builder_profit: float = 0.0
+    pct_proposer_share: float | None = None
+    pct_builder_share: float | None = None
+    pct_relay_fee: float | None = None
 
 
 class AdjustmentResponse(BaseModel):

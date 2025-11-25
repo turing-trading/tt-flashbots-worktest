@@ -25,7 +25,7 @@ WITH block_types AS (
             ELSE 'mev_boost'
         END as block_type,
         COUNT(*) as block_count
-    FROM analysis_pbs_v3
+    FROM analysis_pbs
     WHERE
         $__timeFilter(block_timestamp)
     GROUP BY is_block_vanilla

@@ -25,7 +25,7 @@ WITH relay_blocks AS (
     SELECT
         UNNEST(relays) as relay,
         block_number
-    FROM analysis_pbs_v3
+    FROM analysis_pbs
     WHERE
         $__timeFilter(block_timestamp)
         AND NOT is_block_vanilla

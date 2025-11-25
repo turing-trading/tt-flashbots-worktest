@@ -47,7 +47,7 @@ WITH block_types AS (
             WHEN is_block_vanilla THEN 'vanilla'
             ELSE 'mev_boost'
         END as block_type
-    FROM analysis_pbs_v3
+    FROM analysis_pbs
     WHERE
         $__timeFilter(block_timestamp)
 ),

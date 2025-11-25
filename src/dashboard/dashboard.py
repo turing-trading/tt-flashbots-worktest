@@ -8,6 +8,7 @@ from grafanalib.core import (
 from src.dashboard.colors import (
     get_builder_color_overrides,
     get_builder_color_overrides_with_hidden,
+    get_proposer_color_overrides,
     get_relay_color_overrides,
     get_special_color_overrides,
 )
@@ -42,14 +43,19 @@ def generate_dashboard() -> Dashboard:
     builder_panels_y_1 = 33
     builder_panels_y_2 = 48
 
-    # Row 4: Value and Profitability (y=63)
-    value_row_y = 63
-    value_panels_y_1 = 64
-    value_panels_y_2 = 71
-    value_panels_y_3 = 79
-    value_panels_y_4 = 94
-    value_panels_y_5 = 109
-    value_panels_y_6 = 124
+    # Row 4: Proposer (y=63)
+    proposer_row_y = 63
+    proposer_panels_y_1 = 64
+    proposer_panels_y_2 = 79
+
+    # Row 5: Value and Profitability (y=94)
+    value_row_y = 94
+    value_panels_y_1 = 95
+    value_panels_y_2 = 102
+    value_panels_y_3 = 110
+    value_panels_y_4 = 125
+    value_panels_y_5 = 140
+    value_panels_y_6 = 155
 
     # Load SQL queries
     mev_boost_market_share_pie = load_query("A_general", "1_mev_boost_market_share.sql")
@@ -70,6 +76,11 @@ def generate_dashboard() -> Dashboard:
     builder_ms_profit_ts = load_query(
         "C_builder", "4_builder_market_share_eth_profit.sql"
     )
+
+    proposer_ms_blocks_pie = load_query("E_proposer", "1_proposer_market_share.sql")
+    proposer_ms_blocks_ts = load_query("E_proposer", "2_proposer_market_share.sql")
+    proposer_ms_profit_pie = load_query("E_proposer", "3_proposer_profit_eth.sql")
+    proposer_ms_profit_ts = load_query("E_proposer", "4_proposer_profit_eth.sql")
 
     total_value_dist = load_query(
         "D_value_and_profitability", "1_total_value_distribution_percent.sql"
@@ -309,7 +320,98 @@ def generate_dashboard() -> Dashboard:
                 "BuilderNet (Nethermind)",
             ]),
         ),
-        # Row 4: Value and Profitability
+        # Row 4: Proposer
+        create_row("Proposer", proposer_row_y),
+        create_pie_chart(
+            title="Proposer Market Share (Number of blocks)",
+            description=(
+                "Breakdown of which staking entities are proposing the most blocks. "
+                "Highlights dominant validators and network decentralization."
+            ),
+            query=proposer_ms_blocks_pie,
+            x=0,
+            y=proposer_panels_y_1,
+            w=12,
+            h=15,
+            reduce_fields="/^market_share_pct$/",
+            overrides=get_proposer_color_overrides(),
+        ),
+        create_time_series(
+            title="Proposer Market Share (Number of blocks)",
+            description=(
+                "Shows block-production trends over time for each staking entity. "
+                "Useful for tracking validator ecosystem changes and decentralization."
+            ),
+            query=proposer_ms_blocks_ts,
+            x=12,
+            y=proposer_panels_y_1,
+            w=12,
+            h=15,
+            stacking_mode="normal",
+            axis_max=100,
+            axis_min=0,
+            axisSoftMin=0,
+            axisSoftMax=100,
+            show_points="never",
+            connect_null_values="always",
+            fill_opacity=30,
+            line_interpolation="smooth",
+            transformations=[
+                {
+                    "id": "groupingToMatrix",
+                    "options": {
+                        "columnField": "proposer_name",
+                        "rowField": "time",
+                        "valueField": "market_share_pct",
+                    },
+                }
+            ],
+            overrides=get_proposer_color_overrides(),
+        ),
+        create_pie_chart(
+            title="Proposer Profit",
+            description=(
+                "Distribution of total ETH received by each staking entity. "
+                "Shows which validators capture the most MEV value from builders."
+            ),
+            query=proposer_ms_profit_pie,
+            x=0,
+            y=proposer_panels_y_2,
+            w=12,
+            h=15,
+            unit="ETH",
+            reduce_fields="/^total_profit_eth$/",
+            overrides=get_proposer_color_overrides(),
+        ),
+        create_time_series(
+            title="Proposer Profit",
+            description=(
+                "Tracks proposer subsidy earnings over time. "
+                "Shows how MEV value flows to different staking entities."
+            ),
+            query=proposer_ms_profit_ts,
+            x=12,
+            y=proposer_panels_y_2,
+            w=12,
+            h=15,
+            unit="ETH",
+            axis_scale_type="log",
+            show_points="never",
+            connect_null_values="always",
+            line_interpolation="smooth",
+            transformations=[
+                {
+                    "id": "groupingToMatrix",
+                    "options": {
+                        "columnField": "proposer_name",
+                        "rowField": "time",
+                        "valueField": "total_profit_eth",
+                    },
+                }
+            ],
+            overrides=get_proposer_color_overrides(),
+        ),
+        # Row 5: Value and Profitability
         create_row("Value and Profitability", value_row_y),
         create_bar_chart(
             title="Total Value Distribution (percent)",

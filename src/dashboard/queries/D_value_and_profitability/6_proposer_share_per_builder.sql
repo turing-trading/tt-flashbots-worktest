@@ -39,7 +39,7 @@
 
 WITH top_builders AS (
     SELECT builder_name
-    FROM analysis_pbs_v3
+    FROM analysis_pbs
     WHERE
         $__timeFilter(block_timestamp)
         AND NOT is_block_vanilla
@@ -50,15 +50,12 @@ WITH top_builders AS (
 SELECT
     $__timeGroup(apv.block_timestamp, $__interval) as time,
     apv.builder_name,
-    ROUND(
-        (AVG(apv.proposer_subsidy / (apv.total_value)) * 100)::numeric,
-        2
-    ) as proposer_profit_pct
+    ROUND(AVG(apv.pct_proposer_share)::numeric, 2) as proposer_profit_pct
     --ROUND(SUM(apv.proposer_subsidy)::numeric, 4) as total_proposer_profit_eth,
-    --ROUND(SUM(apv.total_value - apv.proposer_subsidy - COALESCE(apv.relay_fee, 0))::numeric, 4) as total_builder_profit_eth,
+    --ROUND(SUM(apv.builder_profit)::numeric, 4) as total_builder_profit_eth,
     --ROUND(SUM(apv.total_value)::numeric, 4) as total_value_eth,
     --COUNT(*) as block_count
-FROM analysis_pbs_v3 apv
+FROM analysis_pbs apv
 INNER JOIN top_builders tb ON apv.builder_name = tb.builder_name
 WHERE
     $__timeFilter(apv.block_timestamp)

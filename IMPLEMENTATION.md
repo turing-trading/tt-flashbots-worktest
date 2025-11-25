@@ -98,7 +98,7 @@ A comprehensive **Ethereum MEV-Boost data pipeline** that collects, processes, a
 | `extra_builder_balance` | Known builder transfers | Composite key on block + address |
 | `relays_payloads` | Relay bid data | Slot-based with relay name |
 | `ultrasound_adjustments` | Relay fees | Delta calculations |
-| `analysis_pbs_v3` | Aggregated metrics | Total value computation |
+| `analysis_pbs` | Aggregated metrics | Total value computation |
 | `blocks_checkpoints` | Backfill progress | Date-based tracking |
 | `relays_payloads_checkpoints` | Relay cursors | Per-relay pagination state |
 

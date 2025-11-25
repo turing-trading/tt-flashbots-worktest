@@ -124,7 +124,7 @@ Queries use Grafana variables:
 
 ## Notes
 
-- The dashboard expects data in the `analysis_pbs_v3` table
+- The dashboard expects data in the `analysis_pbs` table
 - Default time range is last 20 days
 - Dashboard UID: `e46c6ca2-cd80-4811-955b-f4fcafc860af`
 - Totals in relay market share can exceed 100% when blocks are submitted to multiple relays

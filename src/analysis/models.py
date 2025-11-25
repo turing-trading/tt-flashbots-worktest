@@ -6,10 +6,10 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class AnalysisPBSV3(BaseModel):
-    """PBS analysis data model V3.
+class AnalysisPBS(BaseModel):
+    """PBS analysis data model.
 
-    Includes additional fields for slot, extra transfers, and relay fees.
+    Includes proposer name from proposer_mapping and precomputed percentage columns.
     """
 
     block_number: int = Field(..., description="Block number from blocks table")
@@ -64,5 +64,30 @@ class AnalysisPBSV3(BaseModel):
             "(only for Ultrasound relay)"
         ),
     )
+    # New fields
+    proposer_name: str | None = Field(
+        default=None,
+        description="Proposer entity name from proposer_mapping table",
+    )
+    builder_profit: float = Field(
+        default=0.0,
+        description="Builder profit in ETH (total - proposer - relay_fee)",
+    )
+    pct_proposer_share: float | None = Field(
+        default=None,
+        description="Proposer share as percentage of total_value",
+    )
+    pct_builder_share: float | None = Field(
+        default=None,
+        description="Builder share as percentage of total_value",
+    )
+    pct_relay_fee: float | None = Field(
+        default=None,
+        description="Relay fee as percentage of total_value",
+    )
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Backward compatibility alias for V3
+AnalysisPBSV3 = AnalysisPBS

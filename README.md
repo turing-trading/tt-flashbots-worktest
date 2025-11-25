@@ -185,7 +185,7 @@ The pipeline uses PostgreSQL with the following tables:
 - `extra_builder_balance` - Extra builder balance tracking for known addresses
 - `relays_payloads` - Relay bid data
 - `ultrasound_adjustments` - Ultrasound relay fee adjustments
-- `analysis_pbs_v3` - Aggregated PBS metrics with builder names parsed from extra_data
+- `analysis_pbs` - Aggregated PBS metrics with builder names parsed from extra_data
 - `*_checkpoints` - Progress tracking for backfill
 
 Tables are created automatically on first run.

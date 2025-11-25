@@ -23,10 +23,10 @@
 --
 
 SELECT
-    AVG(proposer_subsidy/total_value) as "Proposer Profit",
-    AVG((total_value - proposer_subsidy - COALESCE(relay_fee, 0))/total_value) as "Builder Profit",
-    AVG(COALESCE(relay_fee, 0)/total_value) as "Relay Fee"
-FROM analysis_pbs_v3
+    AVG(pct_proposer_share) as "Proposer Profit",
+    AVG(pct_builder_share) as "Builder Profit",
+    AVG(pct_relay_fee) as "Relay Fee"
+FROM analysis_pbs
 WHERE
     $__timeFilter(block_timestamp)
     AND NOT is_block_vanilla

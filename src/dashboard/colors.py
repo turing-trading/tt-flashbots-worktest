@@ -52,6 +52,35 @@ BUILDER_COLORS: dict[str, str] = {
     "Turbo": "#64B5F6",  # Light Blue
 }
 
+# Proposer color mappings (staking entities)
+PROPOSER_COLORS: dict[str, str] = {
+    "Lido": "#F5A623",  # Orange
+    "Coinbase": "#0052FF",  # Coinbase Blue
+    "Binance": "#F3BA2F",  # Binance Yellow
+    "Kraken": "#5741D9",  # Kraken Purple
+    "Ether.fi": "#00D395",  # Teal
+    "OKX": "#000000",  # Black
+    "Everstake": "#4A90E2",  # Blue
+    "Bitcoin Suisse": "#FF6B35",  # Orange-Red
+    "Rocketpool": "#FF7043",  # Deep Orange
+    "Stakefish": "#1E88E5",  # Blue
+    "Kiln": "#8E24AA",  # Purple
+    "Figment": "#00897B",  # Teal
+    "Staked.us": "#43A047",  # Green
+    "P2P.org": "#5C6BC0",  # Indigo
+    "Mantle": "#000000",  # Black
+    "Renzo": "#7B1FA2",  # Purple
+    "Swell": "#0097A7",  # Cyan
+    "Frax Finance": "#000000",  # Black
+    "Kelp DAO": "#2E7D32",  # Green
+    "Liquid Collective": "#1565C0",  # Blue
+    "Stader": "#EF5350",  # Red
+    "Puffer": "#AB47BC",  # Purple
+    "Abyss": "#37474F",  # Blue Grey
+    "Unknown": "#9E9E9E",  # Grey
+    "Others": "#757575",  # Dark Grey
+}
+
 # Special entity colors
 SPECIAL_COLORS: dict[str, str] = {
     "vanilla": "#FF0000",  # Red
@@ -93,6 +122,23 @@ def get_builder_color_overrides() -> list[dict[str, Any]]:
             ],
         }
         for builder_name, color in BUILDER_COLORS.items()
+    ]
+
+
+def get_proposer_color_overrides() -> list[dict[str, Any]]:
+    """Generate color overrides for all proposer entities.
+
+    Returns:
+        List of Grafana field override objects for proposer colors
+    """
+    return [
+        {
+            "matcher": {"id": "byName", "options": proposer_name},
+            "properties": [
+                {"id": "color", "value": {"fixedColor": color, "mode": "fixed"}}
+            ],
+        }
+        for proposer_name, color in PROPOSER_COLORS.items()
     ]
 
 
@@ -186,11 +232,13 @@ def get_builder_color_overrides_with_hidden(
 
 __all__ = [
     "BUILDER_COLORS",
+    "PROPOSER_COLORS",
     "RELAY_COLORS",
     "SPECIAL_COLORS",
     "get_builder_color_overrides",
     "get_builder_color_overrides_with_hidden",
     "get_combined_overrides",
+    "get_proposer_color_overrides",
     "get_relay_color_overrides",
     "get_special_color_overrides",
 ]

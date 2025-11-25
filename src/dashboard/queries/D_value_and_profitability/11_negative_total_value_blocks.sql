@@ -46,7 +46,7 @@ WITH ranked_negative_blocks AS (
             PARTITION BY is_block_vanilla
             ORDER BY total_value ASC
         ) as rank
-    FROM analysis_pbs_v3
+    FROM analysis_pbs
     WHERE
         $__timeFilter(block_timestamp)
         AND total_value < 0

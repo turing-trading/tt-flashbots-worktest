@@ -1,4 +1,4 @@
-"""Backfill PBS analysis data V3 with slot, extra transfers, and relay fees."""
+"""Backfill PBS analysis data with proposer_name and precomputed columns."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -9,11 +9,12 @@ from asyncio import run
 from sqlalchemy import case, func, select
 
 from src.analysis.builder_name import parse_builder_name_from_extra_data
-from src.analysis.db import AnalysisPBSV3DB
-from src.analysis.models import AnalysisPBSV3
+from src.analysis.db import AnalysisPBSDB
+from src.analysis.models import AnalysisPBS
 from src.data.adjustments.db import UltrasoundAdjustmentDB
 from src.data.blocks.db import BlockDB
 from src.data.builders.db import BuilderBalancesDB, ExtraBuilderBalanceDB
+from src.data.proposers.db import ProposerMappingDB
 from src.data.relays.db import RelaysPayloadsDB
 from src.helpers.backfill import BackfillBase
 from src.helpers.constants import LARGE_BATCH_SIZE
@@ -30,14 +31,14 @@ if TYPE_CHECKING:
 
 
 # Default to process last year of data
-# START_DATE: datetime = datetime.now(tz=UTC) - timedelta(days=1)
+START_DATE: datetime = datetime.now(tz=UTC) - timedelta(days=30)
 # 2024-01-01
-START_DATE = datetime(2024, 2, 1, tzinfo=UTC)
+# START_DATE = datetime(2024, 2, 1, tzinfo=UTC)
 END_DATE: datetime | None = datetime.now(tz=UTC) - timedelta(minutes=10)
 
 
-class BackfillAnalysisPBSV3(BackfillBase):
-    """Backfill PBS analysis data V3 with slot, extra transfers, and relay fees."""
+class BackfillAnalysisPBS(BackfillBase):
+    """Backfill PBS analysis data with proposer_name and precomputed columns."""
 
     def __init__(self, batch_size: int = LARGE_BATCH_SIZE) -> None:
         """Initialize backfill.
@@ -48,19 +49,17 @@ class BackfillAnalysisPBSV3(BackfillBase):
         super().__init__(batch_size)
 
     async def _get_missing_blocks(self, session: AsyncSession) -> list[tuple[int, ...]]:
-        """Get block numbers that exist in blocks table but not in analysis_pbs_v3.
+        """Get block numbers that exist in blocks table but not in analysis_pbs.
 
         Returns:
             List of block numbers that need to be processed
         """
-        # Use NOT EXISTS for better performance on large tables
-        subquery = select(AnalysisPBSV3DB.block_number).where(
-            AnalysisPBSV3DB.block_number == BlockDB.number
+        subquery = select(AnalysisPBSDB.block_number).where(
+            AnalysisPBSDB.block_number == BlockDB.number
         )
 
         stmt = select(BlockDB.number).where(~subquery.exists())
 
-        # Add END_DATE filter if specified
         if END_DATE is not None:
             stmt = stmt.where(BlockDB.timestamp <= END_DATE)
 
@@ -79,7 +78,6 @@ class BackfillAnalysisPBSV3(BackfillBase):
         """
         stmt = select(BlockDB.number).where(BlockDB.timestamp >= START_DATE)
 
-        # Add END_DATE filter if specified
         if END_DATE is not None:
             stmt = stmt.where(BlockDB.timestamp <= END_DATE)
 
@@ -96,7 +94,6 @@ class BackfillAnalysisPBSV3(BackfillBase):
             .where(BlockDB.timestamp >= START_DATE)
         )
 
-        # Add END_DATE filter if specified
         if END_DATE is not None:
             stmt = stmt.where(BlockDB.timestamp <= END_DATE)
 
@@ -106,7 +103,7 @@ class BackfillAnalysisPBSV3(BackfillBase):
     async def _aggregate_block_data(
         self, session: AsyncSession, block_numbers: list[int]
     ) -> list[AggregatedBlockData]:
-        """Aggregate data from blocks, builder_balance, relays_payloads.
+        """Aggregate from blocks, builder_balance, relays_payloads, proposer_mapping.
 
         Also includes adjustments and extra_builder_balance.
 
@@ -117,13 +114,7 @@ class BackfillAnalysisPBSV3(BackfillBase):
         Returns:
             List of AggregatedBlockData models with aggregated data
         """
-        # Build the aggregation query with all V3 fields
-        # Note: We use CASE WHEN to filter only positive balance
-        # increases for builder_extra_transfers
-
-        # Create subquery for extra builder transfers to avoid
-        # Cartesian product with relays (each relay entry would
-        # multiply the extra transfers count)
+        # Create subquery for extra builder transfers
         extra_transfers_subq = (
             select(
                 ExtraBuilderBalanceDB.block_number,
@@ -155,6 +146,8 @@ class BackfillAnalysisPBSV3(BackfillBase):
                     "builder_extra_transfers_wei"
                 ),
                 func.max(UltrasoundAdjustmentDB.delta).label("relay_fee_wei"),
+                # NEW: Get proposer_name from proposer_mapping
+                func.max(ProposerMappingDB.label).label("proposer_name"),
             )
             .select_from(BlockDB)
             .outerjoin(
@@ -170,6 +163,12 @@ class BackfillAnalysisPBSV3(BackfillBase):
                 UltrasoundAdjustmentDB,
                 RelaysPayloadsDB.slot == UltrasoundAdjustmentDB.slot,
             )
+            # NEW: Join with proposer_mapping to get proposer_name
+            .outerjoin(
+                ProposerMappingDB,
+                RelaysPayloadsDB.proposer_fee_recipient
+                == ProposerMappingDB.proposer_fee_recipient,
+            )
             .where(BlockDB.number.in_(block_numbers))
             .group_by(
                 BlockDB.number,
@@ -183,10 +182,8 @@ class BackfillAnalysisPBSV3(BackfillBase):
         result = await session.execute(stmt)
         rows = result.fetchall()
 
-        # Convert to AggregatedBlockData models
         aggregated_data: list[AggregatedBlockData] = []
         for row in rows:
-            # Unpack tuple from SQL result
             (
                 block_number,
                 block_timestamp,
@@ -197,6 +194,7 @@ class BackfillAnalysisPBSV3(BackfillBase):
                 slot,
                 builder_extra_transfers_wei,
                 relay_fee_wei,
+                proposer_name,
             ) = row
 
             # Get relays array (None-safe, filter out None values from array_agg)
@@ -230,6 +228,19 @@ class BackfillAnalysisPBSV3(BackfillBase):
             if total_value < 0 and builder_extra_transfers > 0:
                 total_value += builder_extra_transfers
 
+            # NEW: Compute builder_profit and percentage columns
+            builder_profit: float = total_value - proposer_subsidy - (relay_fee or 0.0)
+
+            # Only compute percentages when total_value > 0 to avoid division errors
+            pct_proposer_share: float | None = None
+            pct_builder_share: float | None = None
+            pct_relay_fee: float | None = None
+
+            if total_value > 0:
+                pct_proposer_share = (proposer_subsidy / total_value) * 100
+                pct_builder_share = (builder_profit / total_value) * 100
+                pct_relay_fee = ((relay_fee or 0.0) / total_value) * 100
+
             aggregated_data.append(
                 AggregatedBlockData(
                     block_number=block_number,
@@ -244,6 +255,12 @@ class BackfillAnalysisPBSV3(BackfillBase):
                     slot=slot,
                     builder_extra_transfers=builder_extra_transfers,
                     relay_fee=relay_fee,
+                    # NEW fields
+                    proposer_name=proposer_name,
+                    builder_profit=builder_profit,
+                    pct_proposer_share=pct_proposer_share,
+                    pct_builder_share=pct_builder_share,
+                    pct_relay_fee=pct_relay_fee,
                 )
             )
 
@@ -258,12 +275,12 @@ class BackfillAnalysisPBSV3(BackfillBase):
         if not data:
             return
 
-        # Convert AggregatedBlockData to AnalysisPBSV3 models
-        models = [AnalysisPBSV3(**item.model_dump()) for item in data]
+        # Convert AggregatedBlockData to AnalysisPBS models
+        models = [AnalysisPBS(**item.model_dump()) for item in data]
 
-        # Upsert data into analysis_pbs_v3 table
+        # Upsert data into analysis_pbs table
         await upsert_models(
-            db_model_class=AnalysisPBSV3DB,
+            db_model_class=AnalysisPBSDB,
             pydantic_models=models,
         )
 
@@ -285,29 +302,20 @@ class BackfillAnalysisPBSV3(BackfillBase):
         Returns:
             Number of blocks processed
         """
-        # Aggregate data for this batch
         aggregated_data = await self._aggregate_block_data(session, block_numbers)
-
-        # Store aggregated data
         await self._store_analysis_data(aggregated_data)
-
-        # Update progress
         progress.update(task_id, advance=len(block_numbers))
-
         return len(block_numbers)
 
     async def run(self) -> None:
         """Run the backfill process."""
         await self.create_tables()
 
-        # Determine mode based on END_DATE
         overwrite_mode = END_DATE is not None
 
         async with AsyncSessionLocal() as session:
-            # Get blocks to process based on mode
             if overwrite_mode:
                 await self._get_block_count(session)
-
                 blocks_result = await self._get_blocks_in_range(session)
                 blocks_to_process = [row[0] for row in blocks_result]
                 mode_description = "Overwriting all blocks in range"
@@ -323,17 +331,14 @@ class BackfillAnalysisPBSV3(BackfillBase):
                     )
                 else:
                     self.console.print(
-                        "[yellow]No missing blocks to process - analysis_pbs_v3 is "
+                        "[yellow]No missing blocks to process - analysis_pbs is "
                         "up to date[/yellow]"
                     )
                 return
 
             total_to_process = len(blocks_to_process)
 
-            # Display mode information
-            self.console.print(
-                "[bold blue]Backfilling PBS Analysis Data V3[/bold blue]"
-            )
+            self.console.print("[bold blue]Backfilling PBS Analysis Data[/bold blue]")
             if overwrite_mode:
                 self.console.print(
                     "[yellow]Mode: OVERWRITE (END_DATE specified)[/yellow]"
@@ -347,15 +352,12 @@ class BackfillAnalysisPBSV3(BackfillBase):
                 )
                 self.console.print(f"[cyan]Start date: {START_DATE}[/cyan]")
 
-            # Create progress display
             progress = create_standard_progress(console=self.console)
-
             total_processed = 0
 
             with progress:
                 task_id = progress.add_task(mode_description, total=total_to_process)
 
-                # Process in batches
                 for i in range(0, total_to_process, self.batch_size):
                     batch = blocks_to_process[i : i + self.batch_size]
                     processed = await self._process_batch(
@@ -370,7 +372,7 @@ class BackfillAnalysisPBSV3(BackfillBase):
 
 
 if __name__ == "__main__":
-    # Batch size limited to 5000 to avoid PostgreSQL's 65535 parameter limit
-    # V3 has 12 fields per row (5000 * 12 = 60000 parameters)
-    backfill = BackfillAnalysisPBSV3(batch_size=5000)
+    # Batch size limited to 3500 to avoid PostgreSQL's 65535 parameter limit
+    # analysis_pbs has 17 fields per row (3500 * 17 = 59500 parameters)
+    backfill = BackfillAnalysisPBS(batch_size=3500)
     run(backfill.run())

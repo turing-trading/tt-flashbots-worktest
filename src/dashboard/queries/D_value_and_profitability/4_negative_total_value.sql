@@ -36,7 +36,7 @@ WITH block_stats AS (
         COUNT(*) FILTER (WHERE total_value < 0) as negative_blocks,
         COUNT(*) as total_blocks,
         SUM(ABS(total_value)) FILTER (WHERE total_value < 0) as total_negative_value_eth
-    FROM analysis_pbs_v3
+    FROM analysis_pbs
     WHERE
         $__timeFilter(block_timestamp)
     GROUP BY is_block_vanilla
