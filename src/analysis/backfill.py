@@ -31,9 +31,9 @@ if TYPE_CHECKING:
 
 
 # Default to process last year of data
-START_DATE: datetime = datetime.now(tz=UTC) - timedelta(days=30)
+# START_DATE: datetime = datetime.now(tz=UTC) - timedelta(days=30)
 # 2024-01-01
-# START_DATE = datetime(2024, 2, 1, tzinfo=UTC)
+START_DATE = datetime(2024, 2, 1, tzinfo=UTC)
 END_DATE: datetime | None = datetime.now(tz=UTC) - timedelta(minutes=10)
 
 
@@ -214,7 +214,7 @@ class BackfillAnalysisPBS(BackfillBase):
             # Parse builder name directly from extra_data
             builder_name: str = parse_builder_name_from_extra_data(extra_data)
 
-            # V3 specific fields
+            # Specific fields
             builder_extra_transfers: float = (
                 wei_to_eth(builder_extra_transfers_wei) or 0.0
             )

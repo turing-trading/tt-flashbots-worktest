@@ -16,6 +16,7 @@ from src.dashboard.panels import (
     create_bar_chart,
     create_pie_chart,
     create_row,
+    create_sankey,
     create_stat,
     create_table,
     create_time_series,
@@ -45,17 +46,23 @@ def generate_dashboard() -> Dashboard:
 
     # Row 4: Proposer (y=63)
     proposer_row_y = 63
-    proposer_panels_y_1 = 64
-    proposer_panels_y_2 = 79
+    proposer_panels_y = 64
 
-    # Row 5: Value and Profitability (y=94)
+    # Row 5: Value and Profitability (y=79)
     value_row_y = 94
     value_panels_y_1 = 95
     value_panels_y_2 = 102
     value_panels_y_3 = 110
     value_panels_y_4 = 125
-    value_panels_y_5 = 140
-    value_panels_y_6 = 155
+
+    # Row 6: Sankey Flow (y=140)
+    sankey_row_y = 140
+    sankey_panels_y = 141
+
+    # Row 7: Negative Values (y=161)
+    negative_row_y = 161
+    negative_panels_y_1 = 162
+    negative_panels_y_2 = 177
 
     # Load SQL queries
     mev_boost_market_share_pie = load_query("A_general", "1_mev_boost_market_share.sql")
@@ -79,8 +86,6 @@ def generate_dashboard() -> Dashboard:
 
     proposer_ms_blocks_pie = load_query("E_proposer", "1_proposer_market_share.sql")
     proposer_ms_blocks_ts = load_query("E_proposer", "2_proposer_market_share.sql")
-    proposer_ms_profit_pie = load_query("E_proposer", "3_proposer_profit_eth.sql")
-    proposer_ms_profit_ts = load_query("E_proposer", "4_proposer_profit_eth.sql")
 
     total_value_dist = load_query(
         "D_value_and_profitability", "1_total_value_distribution_percent.sql"
@@ -114,6 +119,10 @@ def generate_dashboard() -> Dashboard:
         "D_value_and_profitability", "11_negative_total_value_blocks.sql"
     )
 
+    builder_relay_proposer_flow = load_query(
+        "F_sankey", "builder_relay_proposer_flow.sql"
+    )
+
     # Create panels
     panels = [
         # Row 1: General
@@ -128,7 +137,7 @@ def generate_dashboard() -> Dashboard:
             query=mev_boost_market_share_pie,
             x=0,
             y=general_panels_y,
-            w=12,
+            w=8,
             h=15,
             reduce_fields="/^market_share_pct$/",
             overrides=get_special_color_overrides(["vanilla", "mev-boost"]),
@@ -141,9 +150,9 @@ def generate_dashboard() -> Dashboard:
                 "network-wide MEV dynamics."
             ),
             query=mev_boost_market_share_ts,
-            x=12,
+            x=8,
             y=general_panels_y,
-            w=12,
+            w=16,
             h=15,
             stacking_mode="normal",
             axisSoftMin=0,
@@ -176,7 +185,7 @@ def generate_dashboard() -> Dashboard:
             query=relay_market_share_pie,
             x=0,
             y=relay_panels_y,
-            w=12,
+            w=8,
             h=15,
             reduce_fields="/^market_share_pct$/",
             transformations=[
@@ -198,9 +207,9 @@ def generate_dashboard() -> Dashboard:
                 "in usage by builders or validators."
             ),
             query=relay_market_share_ts,
-            x=12,
+            x=8,
             y=relay_panels_y,
-            w=12,
+            w=16,
             h=15,
             stacking_mode="normal",
             axis_max=100,
@@ -226,28 +235,30 @@ def generate_dashboard() -> Dashboard:
         # Row 3: Builder
         create_row("Builder", builder_row_y),
         create_pie_chart(
-            title="Builder Market Share (Number of blocks)",
-            description="Breakdown of which builders are producing the most blocks. "
-            "Highlights dominant builders and overall builder-level competition.",
+            title="Builder Market Share (Blocks)",
+            description=(
+                "Breakdown of which builders are producing the most blocks. "
+                "Highlights dominant builders and overall builder-level competition."
+            ),
             query=builder_ms_blocks_pie,
             x=0,
             y=builder_panels_y_1,
-            w=12,
+            w=8,
             h=15,
             reduce_fields="/^market_share_pct$/",
             overrides=get_builder_color_overrides(),
         ),
         create_time_series(
-            title="Builder Market Share (Number of blocks)",
+            title="Builder Market Share (Blocks)",
             description=(
-                "Shows block-production trends over time for each builder. "
-                "Useful for identifying new entrants, growth/decline in "
+                "Shows block production trends over time for each builder. "
+                "Useful for identifying new entrants, growth or decline in "
                 "builder influence, and network events affecting activity."
             ),
             query=builder_ms_blocks_ts,
-            x=12,
+            x=8,
             y=builder_panels_y_1,
-            w=12,
+            w=16,
             h=15,
             stacking_mode="normal",
             axis_max=100,
@@ -271,32 +282,31 @@ def generate_dashboard() -> Dashboard:
             overrides=get_builder_color_overrides(),
         ),
         create_pie_chart(
-            title="Builder Market Share (ETH profit)",
+            title="Builder Market Share (ETH Profit)",
             description=(
-                "Distribution of total MEV/ETH profit captured by each "
-                "builder. Shows not just who produces blocks—but who extracts "
-                "the most value."
+                "Distribution of total ETH profit captured by each builder. "
+                "Shows not just who produces blocks, but who extracts the most value."
             ),
             query=builder_ms_profit_pie,
             x=0,
             y=builder_panels_y_2,
-            w=12,
+            w=8,
             h=15,
             unit="ETH",
             reduce_fields="/^total_profit_eth$/",
             overrides=get_builder_color_overrides(),
         ),
         create_time_series(
-            title="Builder Market Share (ETH profit)",
+            title="Builder Market Share (ETH Profit)",
             description=(
                 "Tracks builder profitability over time. Profit spikes often "
-                "correlate with MEV opportunities (liquidations, arbitrage, "
-                "mempool spikes)."
+                "correlate with MEV opportunities like liquidations, arbitrage, "
+                "and mempool activity."
             ),
             query=builder_ms_profit_ts,
-            x=12,
+            x=8,
             y=builder_panels_y_2,
-            w=12,
+            w=16,
             h=15,
             unit="ETH",
             axis_scale_type="log",
@@ -323,29 +333,29 @@ def generate_dashboard() -> Dashboard:
         # Row 4: Proposer
         create_row("Proposer", proposer_row_y),
         create_pie_chart(
-            title="Proposer Market Share (Number of blocks)",
+            title="Proposer Market Share (Blocks)",
             description=(
                 "Breakdown of which staking entities are proposing the most blocks. "
                 "Highlights dominant validators and network decentralization."
             ),
             query=proposer_ms_blocks_pie,
             x=0,
-            y=proposer_panels_y_1,
-            w=12,
+            y=proposer_panels_y,
+            w=8,
             h=15,
             reduce_fields="/^market_share_pct$/",
             overrides=get_proposer_color_overrides(),
         ),
         create_time_series(
-            title="Proposer Market Share (Number of blocks)",
+            title="Proposer Market Share (Blocks)",
             description=(
-                "Shows block-production trends over time for each staking entity. "
+                "Shows block production trends over time for each staking entity. "
                 "Useful for tracking validator ecosystem changes and decentralization."
             ),
             query=proposer_ms_blocks_ts,
-            x=12,
-            y=proposer_panels_y_1,
-            w=12,
+            x=8,
+            y=proposer_panels_y,
+            w=16,
             h=15,
             stacking_mode="normal",
             axis_max=100,
@@ -368,63 +378,20 @@ def generate_dashboard() -> Dashboard:
             ],
             overrides=get_proposer_color_overrides(),
         ),
-        create_pie_chart(
-            title="Proposer Profit",
-            description=(
-                "Distribution of total ETH received by each staking entity. "
-                "Shows which validators capture the most MEV value from builders."
-            ),
-            query=proposer_ms_profit_pie,
-            x=0,
-            y=proposer_panels_y_2,
-            w=12,
-            h=15,
-            unit="ETH",
-            reduce_fields="/^total_profit_eth$/",
-            overrides=get_proposer_color_overrides(),
-        ),
-        create_time_series(
-            title="Proposer Profit",
-            description=(
-                "Tracks proposer subsidy earnings over time. "
-                "Shows how MEV value flows to different staking entities."
-            ),
-            query=proposer_ms_profit_ts,
-            x=12,
-            y=proposer_panels_y_2,
-            w=12,
-            h=15,
-            unit="ETH",
-            axis_scale_type="log",
-            show_points="never",
-            connect_null_values="always",
-            line_interpolation="smooth",
-            transformations=[
-                {
-                    "id": "groupingToMatrix",
-                    "options": {
-                        "columnField": "proposer_name",
-                        "rowField": "time",
-                        "valueField": "total_profit_eth",
-                    },
-                }
-            ],
-            overrides=get_proposer_color_overrides(),
-        ),
         # Row 5: Value and Profitability
         create_row("Value and Profitability", value_row_y),
         create_bar_chart(
-            title="Total Value Distribution (percent)",
+            title="Total Value Distribution",
             description=(
-                "Distribution of block values (proposer profit) for "
-                "MEV-Boost vs vanilla blocks. Reveals how MEV-Boost increases "
-                "value, and how often negative or low-value blocks occur."
+                "Distribution of block values for MEV-Boost vs vanilla blocks. "
+                "Reveals how MEV-Boost increases value and how often negative "
+                "or low-value blocks occur."
             ),
             query=total_value_dist,
             query2=total_value_dist_2,
             x=0,
             y=value_panels_y_1,
-            w=12,
+            w=16,
             h=15,
             unit="none",
             x_field="bucket_min",
@@ -440,9 +407,9 @@ def generate_dashboard() -> Dashboard:
                 "MEV-Boost."
             ),
             query=avg_total_value,
-            x=12,
+            x=16,
             y=value_panels_y_1,
-            w=12,
+            w=8,
             h=7,
             unit="ETH",
             transformations=[{"id": "transpose", "options": {}}],
@@ -455,9 +422,9 @@ def generate_dashboard() -> Dashboard:
                 "MEV-Boost and vanilla."
             ),
             query=negative_total_value,
-            x=12,
+            x=16,
             y=value_panels_y_2,
-            w=12,
+            w=8,
             h=8,
             unit="percent",
             transformations=[{"id": "transpose", "options": {}}],
@@ -475,19 +442,51 @@ def generate_dashboard() -> Dashboard:
             y=value_panels_y_3,
             w=12,
             h=15,
-            unit="percentunit",
+            unit="percent",
             overrides=get_special_color_overrides([
                 "Proposer Profit",
                 "Builder Profit",
                 "Relay Fee",
             ]),
         ),
-        create_time_series(
-            title="Proposer share (per builder)",
-            description="Proposer share of total value in block per builder over time.",
-            query=proposer_share_per_builder,
+        create_bar_chart(
+            title="Overbid Distribution",
+            description=(
+                "Shows how much builders are overbidding relative to block "
+                "value. Large overbids indicate competitive pressure among "
+                "builders or strategies that prioritize winning over "
+                "profitability."
+            ),
+            query=overbid_dist,
             x=12,
             y=value_panels_y_3,
+            w=12,
+            h=15,
+            unit="percent",
+        ),
+        create_bar_chart(
+            title="Proposer Share of Total Value",
+            description=(
+                "Shows what percentage of block value goes to proposers vs builders. "
+                "Higher values indicate proposers are capturing more MEV."
+            ),
+            query=proposer_share_total,
+            x=0,
+            y=value_panels_y_4,
+            w=12,
+            h=15,
+            unit="percent",
+            axis_max=100,
+        ),
+        create_time_series(
+            title="Proposer Share per Builder",
+            description=(
+                "Shows the proposer's share of total block value for each builder "
+                "over time. Helps identify which builders give more to proposers."
+            ),
+            query=proposer_share_per_builder,
+            x=12,
+            y=value_panels_y_4,
             w=12,
             h=15,
             unit="percent",
@@ -507,45 +506,32 @@ def generate_dashboard() -> Dashboard:
             ],
             overrides=get_builder_color_overrides(),
         ),
-        create_bar_chart(
-            title="Overbid Distribution",
+        # Row 6: Sankey Flow
+        create_row("Flow Visualization", sankey_row_y),
+        create_sankey(
+            title="Builder → Relay → Proposer Flow",
             description=(
-                "Shows how much builders are overbidding relative to block "
-                "value. Large overbids indicate competitive pressure among "
-                "builders or strategies that prioritize winning over "
-                "profitability."
+                "Visualizes the flow of blocks from builders through relays "
+                "to proposers. The thickness of each link represents the number "
+                "of blocks flowing through that path."
             ),
-            query=overbid_dist,
+            query=builder_relay_proposer_flow,
             x=0,
-            y=value_panels_y_4,
-            w=12,
-            h=15,
-            unit="percent",
+            y=sankey_panels_y,
+            w=24,
+            h=20,
         ),
+        # Row 7: Negative Values
+        create_row("Negative Values", negative_row_y),
         create_bar_chart(
-            title="Proposer share of total value",
+            title="Negative Total Value Blocks (MEV-Boost)",
             description=(
-                "Useful for monitoring whether builders retain too much value "
-                "or if proposer rewards are healthy."
-            ),
-            query=proposer_share_total,
-            x=12,
-            y=value_panels_y_4,
-            w=12,
-            h=15,
-            unit="percent",
-            axis_max=100,
-        ),
-        create_bar_chart(
-            title="Negative Total Value Blocks (MEV-boost)",
-            description=(
-                "Counts negative-value blocks per builder. "
-                "Useful for identifying risky or inefficient builders and "
-                "relay-builder mismatches."
+                "Counts negative-value blocks per builder for MEV-Boost blocks. "
+                "Helps identify builders with risky strategies."
             ),
             query=negative_blocks_mev,
             x=0,
-            y=value_panels_y_5,
+            y=negative_panels_y_1,
             w=12,
             h=15,
             unit="percent",
@@ -553,15 +539,14 @@ def generate_dashboard() -> Dashboard:
             overrides=get_builder_color_overrides(),
         ),
         create_bar_chart(
-            title="Negative Total Value Blocks (vanilla)",
+            title="Negative Total Value Blocks (Vanilla)",
             description=(
-                "Counts negative-value blocks per builder (vanilla blocks "
-                "only). Useful for identifying risky or inefficient builders "
-                "and relay-builder mismatches."
+                "Counts negative-value blocks per builder for vanilla blocks. "
+                "Helps identify builders with risky strategies."
             ),
             query=negative_blocks_vanilla,
             x=12,
-            y=value_panels_y_5,
+            y=negative_panels_y_1,
             w=12,
             h=15,
             unit="percent",
@@ -569,15 +554,14 @@ def generate_dashboard() -> Dashboard:
             overrides=get_builder_color_overrides(),
         ),
         create_table(
-            title="Negative Total Value blocks",
+            title="Negative Total Value Blocks",
             description=(
                 "Lists all blocks where total value was negative. "
-                "Helps diagnose which builders are losing money, and whether "
-                "specific relays or strategies malfunctioned."
+                "Useful for diagnosing which builders are losing money."
             ),
             query=negative_blocks_table,
             x=0,
-            y=value_panels_y_6,
+            y=negative_panels_y_2,
             w=24,
             h=18,
         ),

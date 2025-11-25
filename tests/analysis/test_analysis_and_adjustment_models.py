@@ -2,16 +2,16 @@
 
 from datetime import UTC, datetime
 
-from src.analysis.models import AnalysisPBSV3
+from src.analysis.models import AnalysisPBS
 from src.data.adjustments.models import UltrasoundAdjustment
 
 
-class TestAnalysisPBSV3:
-    """Tests for AnalysisPBSV3 model."""
+class TestAnalysisPBS:
+    """Tests for AnalysisPBS model."""
 
     def test_create_with_required_fields_only(self) -> None:
         """Test creating model with only required fields."""
-        analysis = AnalysisPBSV3(
+        analysis = AnalysisPBS(
             block_number=1000,
             block_timestamp=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
         )
@@ -30,7 +30,7 @@ class TestAnalysisPBSV3:
 
     def test_create_with_all_fields(self) -> None:
         """Test creating model with all fields."""
-        analysis = AnalysisPBSV3(
+        analysis = AnalysisPBS(
             block_number=1000,
             block_timestamp=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
             builder_balance_increase=1.5,
@@ -58,7 +58,7 @@ class TestAnalysisPBSV3:
 
     def test_vanilla_block(self) -> None:
         """Test model for vanilla block."""
-        analysis = AnalysisPBSV3(
+        analysis = AnalysisPBS(
             block_number=1000,
             block_timestamp=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
             builder_balance_increase=2.0,
@@ -74,7 +74,7 @@ class TestAnalysisPBSV3:
 
     def test_mev_boost_block(self) -> None:
         """Test model for MEV-Boost block."""
-        analysis = AnalysisPBSV3(
+        analysis = AnalysisPBS(
             block_number=1000,
             block_timestamp=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
             builder_balance_increase=1.0,
@@ -108,6 +108,7 @@ class TestUltrasoundAdjustment:
             submitted_block_hash="0xsubmitted",
             submitted_received_at="2023-01-01T00:00:00Z",
             submitted_value=1000000000000000000,
+            fetched_at=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
         )
 
         assert adjustment.slot == 12345
@@ -132,6 +133,7 @@ class TestUltrasoundAdjustment:
             submitted_block_hash="0xhash",
             submitted_received_at="2023-01-01T00:00:00Z",
             submitted_value=1000000000000000000,
+            fetched_at=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
         )
 
         assert isinstance(adjustment.adjusted_value, int)
@@ -150,9 +152,12 @@ class TestUltrasoundAdjustment:
             submitted_block_hash="0xhash",
             submitted_received_at="2023-01-01T00:00:00Z",
             submitted_value=1500000000000000000,
+            fetched_at=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
         )
 
-        assert adjustment.delta > 0
+        assert adjustment.delta is not None and adjustment.delta > 0
+        assert adjustment.adjusted_value is not None
+        assert adjustment.submitted_value is not None
         assert adjustment.adjusted_value > adjustment.submitted_value
 
     def test_negative_delta(self) -> None:
@@ -167,7 +172,10 @@ class TestUltrasoundAdjustment:
             submitted_block_hash="0xhash",
             submitted_received_at="2023-01-01T00:00:00Z",
             submitted_value=1500000000000000000,
+            fetched_at=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
         )
 
-        assert adjustment.delta < 0
+        assert adjustment.delta is not None and adjustment.delta < 0
+        assert adjustment.adjusted_value is not None
+        assert adjustment.submitted_value is not None
         assert adjustment.adjusted_value < adjustment.submitted_value

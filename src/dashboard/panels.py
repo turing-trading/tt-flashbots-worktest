@@ -550,3 +550,65 @@ def create_scatter_plot(
         overrides=overrides or [],
         **kwargs,
     )
+
+
+@attr.s
+class SankeyPanel(Panel):
+    """Sankey diagram panel for flow visualization."""
+
+    transformations: list[dict[str, Any]] = attr.ib(factory=list)
+    overrides: list[dict[str, Any]] = attr.ib(factory=list)
+
+    def to_json_data(self) -> dict[str, Any]:
+        """Convert to JSON data for Grafana."""
+        panel_data = self.panel_json({
+            "type": "netsage-sankey-panel",
+            "options": {},
+            "fieldConfig": {
+                "defaults": {},
+                "overrides": self.overrides,
+            },
+        })
+
+        # Add transformations if specified
+        if self.transformations:
+            panel_data["transformations"] = self.transformations
+
+        return panel_data
+
+
+def create_sankey(
+    title: str,
+    description: str,
+    query: str,
+    x: int,
+    y: int,
+    w: int = 24,
+    h: int = 15,
+    transformations: list[dict[str, Any]] | None = None,
+    **kwargs: Any,
+) -> SankeyPanel:
+    """Create a Sankey diagram panel.
+
+    Args:
+        title: Panel title
+        description: Panel description
+        query: SQL query returning columns for the flow (e.g., source, target, value)
+        x: X position in grid
+        y: Y position in grid
+        w: Width in grid units (default 24)
+        h: Height in grid units (default 15)
+        transformations: List of transformation dictionaries
+        **kwargs: Additional arguments to pass to SankeyPanel
+
+    Returns:
+        SankeyPanel object
+    """
+    return SankeyPanel(
+        title=title,
+        description=description,
+        targets=[create_sql_target(query)],
+        gridPos=GridPos(h=h, w=w, x=x, y=y),
+        transformations=transformations or [],
+        **kwargs,
+    )

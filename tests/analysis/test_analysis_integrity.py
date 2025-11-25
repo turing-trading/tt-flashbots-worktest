@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select, text
 
-from src.analysis.db import AnalysisPBSV3DB as AnalysisPBSDB
+from src.analysis.db import AnalysisPBSDB
 
 
 if TYPE_CHECKING:

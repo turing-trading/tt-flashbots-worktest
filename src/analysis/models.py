@@ -87,7 +87,3 @@ class AnalysisPBS(BaseModel):
     )
 
     model_config = ConfigDict(from_attributes=True)
-
-
-# Backward compatibility alias for V3
-AnalysisPBSV3 = AnalysisPBS

@@ -57,12 +57,12 @@ class BackfillProposerMapping(BackfillBase):
             for i in range(0, len(pubkeys), chunk_size):
                 chunk = pubkeys[i : i + chunk_size]
                 placeholders = ", ".join([f":p{j}" for j in range(len(chunk))])
-                query = text(  # noqa: S608 - placeholders are parameterized
+                query = text(
                     f"""
                     SELECT DISTINCT proposer_pubkey, proposer_fee_recipient
                     FROM relays_payloads
                     WHERE proposer_pubkey IN ({placeholders})
-                    """
+                    """  # noqa: S608 - placeholders are parameterized
                 )
                 params = {f"p{j}": pk for j, pk in enumerate(chunk)}
                 result = await session.execute(query, params)

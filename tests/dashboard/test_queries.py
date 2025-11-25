@@ -108,6 +108,8 @@ class TestLoadAllQueries:
             "B_relay",
             "C_builder",
             "D_value_and_profitability",
+            "E_proposer",
+            "F_sankey",
         ]
 
         for key in queries:
@@ -140,6 +142,8 @@ class TestLoadAllQueries:
             "B_relay": 0,
             "C_builder": 0,
             "D_value_and_profitability": 0,
+            "E_proposer": 0,
+            "F_sankey": 0,
         }
 
         for key in queries:
@@ -166,4 +170,6 @@ class TestLoadAllQueries:
                 "B",
                 "C",
                 "D",
+                "E",
+                "F",
             }, f"Query key {key} doesn't start with valid category letter"

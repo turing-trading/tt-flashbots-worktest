@@ -30,9 +30,10 @@ import httpx
 from websockets.asyncio.client import connect
 
 from src.analysis.builder_name import parse_builder_name_from_extra_data
-from src.analysis.db import AnalysisPBSV3DB
-from src.analysis.models import AnalysisPBSV3
+from src.analysis.db import AnalysisPBSDB
+from src.analysis.models import AnalysisPBS
 from src.data.adjustments.db import UltrasoundAdjustmentDB
+from src.data.adjustments.models import UltrasoundAdjustment
 from src.data.blocks.db import BlockDB
 from src.data.blocks.models import Block
 from src.data.builders.db import BuilderBalancesDB, ExtraBuilderBalanceDB
@@ -300,7 +301,7 @@ class LiveProcessor:
                 block_number, miner_address
             )
 
-            # Stage 3: Fetch extra builder balances (for V3)
+            # Stage 3: Fetch extra builder balances
             extra_builder_data = await self._fetch_extra_builder_balances(
                 block_number, miner_address
             )
@@ -747,7 +748,7 @@ class LiveProcessor:
 
             if adjustment_data is None:
                 # No adjustment found
-                adjustment_record = UltrasoundAdjustmentDB(
+                adjustment_record = UltrasoundAdjustment(
                     slot=slot,
                     fetched_at=now,
                     has_adjustment=False,
@@ -759,7 +760,7 @@ class LiveProcessor:
                 delta = adjustment_data.get("delta")
                 submitted_value = adjustment_data.get("submitted_value")
 
-                adjustment_record = UltrasoundAdjustmentDB(
+                adjustment_record = UltrasoundAdjustment(
                     slot=slot,
                     adjusted_block_hash=adjustment_data.get("adjusted_block_hash"),
                     adjusted_value=int(adjusted_value) if adjusted_value else None,
@@ -808,7 +809,7 @@ class LiveProcessor:
         extra_builder_data: list[ExtraBuilderBalanceData],
         adjustment_data: AdjustmentData | None,
     ) -> None:
-        """Compute and store PBS analysis V3 using data from previous stages.
+        """Compute and store PBS analysis using data from previous stages.
 
         No database queries - all data passed as parameters.
 
@@ -882,8 +883,8 @@ class LiveProcessor:
             # Calculate builder profit
             builder_profit = total_value - proposer_subsidy - (relay_fee or 0.0)
 
-            # Create analysis model V3
-            analysis = AnalysisPBSV3(
+            # Create analysis model
+            analysis = AnalysisPBS(
                 block_number=block_number,
                 block_timestamp=block_timestamp,
                 builder_balance_increase=builder_balance_increase,
@@ -902,13 +903,13 @@ class LiveProcessor:
 
             # Store in database
             await upsert_models(
-                db_model_class=AnalysisPBSV3DB,
+                db_model_class=AnalysisPBSDB,
                 pydantic_models=[analysis],
             )
 
             self.analysis_processed += 1
             logger.info(
-                "Stored PBS analysis V3 for block #%s (builder: %s, slot: %s)",
+                "Stored PBS analysis for block #%s (builder: %s, slot: %s)",
                 block_number,
                 builder_name,
                 slot,

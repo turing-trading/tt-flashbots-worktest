@@ -71,7 +71,3 @@ class AnalysisPBSDB(Base):
     pct_relay_fee: Mapped[float | None] = mapped_column(
         Float, nullable=True
     )  # relay_fee / total_value * 100 (NULL if total_value <= 0)
-
-
-# Backward compatibility alias for V3
-AnalysisPBSV3DB = AnalysisPBSDB

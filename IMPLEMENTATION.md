@@ -68,7 +68,7 @@ A comprehensive **Ethereum MEV-Boost data pipeline** that collects, processes, a
 
 ### 3. Analysis Engine (`src/analysis/`)
 
-#### PBS Analysis V3 Model
+#### PBS Analysis Model
 **Comprehensive aggregation with:**
 - Builder balance increases
 - Proposer subsidies (max relay value)
@@ -209,7 +209,7 @@ All queries feature:
 Based on git history:
 1. Ultrasound relay integration improvements
 2. Extra builder balance tracking (BuilderNet refunds)
-3. PBS V3 model with slot and relay fee data
+3. PBS model with slot and relay fee data
 4. Enhanced retry logic for failed requests
 5. Data integrity test additions
 6. Builder name parsing refinements
