@@ -101,6 +101,7 @@ A comprehensive **Ethereum MEV-Boost data pipeline** that collects, processes, a
 | `analysis_pbs` | Aggregated metrics | Total value computation |
 | `blocks_checkpoints` | Backfill progress | Date-based tracking |
 | `relays_payloads_checkpoints` | Relay cursors | Per-relay pagination state |
+| `ulltrasound_adjustments` | Ultrasound bid adjustments | |
 
 ### 5. Analytical Queries
 

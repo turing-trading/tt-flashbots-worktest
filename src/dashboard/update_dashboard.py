@@ -82,8 +82,15 @@ class GrafanaErrorResponse(BaseModel):
 
 # Dashboard configurations
 def get_preview_config() -> DashboardConfig:
-    """Get preview dashboard configuration."""
-    folder_id_str = get_optional_env("GRAFANA_FOLDER_ID", "0")
+    """Get preview dashboard configuration.
+
+    Uses Private Dashboard folder for preview/development work.
+    """
+    # Private Dashboard folder for preview
+    folder_id_str = (
+        get_optional_env("GRAFANA_PREVIEW_FOLDER_ID")
+        or get_optional_env("GRAFANA_FOLDER_ID", "0")
+    )
     return DashboardConfig(
         title="Preview - MEV-Boost Relay (Thomas' Worktest)",
         uid="e46c6ca2-cd80-4811-955b-test",
@@ -93,8 +100,15 @@ def get_preview_config() -> DashboardConfig:
 
 
 def get_production_config() -> DashboardConfig:
-    """Get production dashboard configuration."""
-    folder_id_str = get_optional_env("GRAFANA_FOLDER_ID", "0")
+    """Get production dashboard configuration.
+
+    Uses Public Dashboard folder for production deployment.
+    """
+    # Public Dashboard folder for production
+    folder_id_str = (
+        get_optional_env("GRAFANA_PRODUCTION_FOLDER_ID")
+        or get_optional_env("GRAFANA_FOLDER_ID", "0")
+    )
     return DashboardConfig(
         title="MEV-Boost Relay (Thomas' Worktest)",
         uid="e46c6ca2-cd80-4811-955b-f4fcafc860af",

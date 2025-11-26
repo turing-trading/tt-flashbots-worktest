@@ -54,15 +54,15 @@ BUILDER_COLORS: dict[str, str] = {
 
 # Proposer color mappings (staking entities)
 PROPOSER_COLORS: dict[str, str] = {
-    "Lido": "#F5A623",  # Orange
+    "Lido": "#00A3FF",  # Lido Blue/Cyan
     "Coinbase": "#0052FF",  # Coinbase Blue
     "Binance": "#F3BA2F",  # Binance Yellow
     "Kraken": "#5741D9",  # Kraken Purple
     "Ether.fi": "#00D395",  # Teal
     "OKX": "#000000",  # Black
-    "Everstake": "#4A90E2",  # Blue
-    "Bitcoin Suisse": "#FF6B35",  # Orange-Red
-    "Rocketpool": "#FF7043",  # Deep Orange
+    "Everstake": "#26A69A",  # Teal-Green
+    "Bitcoin Suisse": "#E53935",  # Bitcoin Suisse Red
+    "Rocketpool": "#FF9A5C",  # Rocketpool Orange
     "Stakefish": "#1E88E5",  # Blue
     "Kiln": "#8E24AA",  # Purple
     "Figment": "#00897B",  # Teal
