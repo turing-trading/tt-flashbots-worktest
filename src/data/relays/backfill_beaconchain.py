@@ -151,7 +151,9 @@ def extract_relay_payload(block_data: dict) -> dict | None:
         "block_hash": block_data.get("blockHash"),
         "builder_pubkey": relay_info.get("builderPubkey"),
         "proposer_pubkey": None,  # Not available from beaconcha.in
-        "proposer_fee_recipient": relay_info.get("producerFeeRecipient"),
+        "proposer_fee_recipient": relay_info.get("producerFeeRecipient").lower()
+        if relay_info.get("producerFeeRecipient")
+        else None,
         "gas_limit": block_data.get("gasLimit"),
         "gas_used": block_data.get("gasUsed"),
         "value": block_data.get("producerReward"),  # MEV reward in wei

@@ -632,7 +632,16 @@ class LiveProcessor:
                     logger.debug("Invalid payload from %s: %s", relay, e)
                     continue
 
-            return validated_payloads or None
+            if not validated_payloads:
+                validated_payloads = []
+
+            for payload in validated_payloads:
+                if payload.proposer_fee_recipient:
+                    payload.proposer_fee_recipient = (
+                        payload.proposer_fee_recipient.lower()
+                    )
+
+            return validated_payloads
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 return None  # No data available yet

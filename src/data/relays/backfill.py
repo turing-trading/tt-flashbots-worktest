@@ -87,7 +87,14 @@ class BackfillRelayPayloadDelivered(BackfillBase):
         response = await client.get(url, params=params, timeout=EXTENDED_TIMEOUT)
         response.raise_for_status()
         data = TypeAdapter(list[RelaysPayloads]).validate_json(response.text)
-        return list({item.slot: item for item in data}.values())
+        result = list({item.slot: item for item in data}.values())
+        if not result:
+            result = []
+
+        for payload in result:
+            if payload.proposer_fee_recipient:
+                payload.proposer_fee_recipient = payload.proposer_fee_recipient.lower()
+        return result
 
     async def _fetch_data(
         self,
