@@ -1,6 +1,8 @@
-"""Backfill PBS analysis data with proposer_name and precomputed columns."""
+"""Backfill PBS analysis data for blocks incorrectly marked as vanilla.
 
-from datetime import UTC, datetime, timedelta
+Finds blocks where is_block_vanilla=True in analysis_pbs but that have
+data in relays_payloads, then re-processes them to fix the classification.
+"""
 
 from typing import TYPE_CHECKING
 
@@ -30,21 +32,8 @@ if TYPE_CHECKING:
     from rich.progress import Progress, TaskID
 
 
-# Default to process last year of data
-# START_DATE: datetime = datetime.now(tz=UTC) - timedelta(days=1)
-# 2024-01-01
-# START_DATE = datetime(2023, 4, 14, tzinfo=UTC)
-# END_DATE = datetime(2024, 4, 8, tzinfo=UTC)
-START_DATE = datetime.fromisoformat("2022-10-07T00:51:47.941Z".replace("Z", "+00:00"))
-END_DATE = datetime.fromisoformat("2023-01-30T12:43:09.729Z".replace("Z", "+00:00"))
-
-# START_DATE = datetime.fromisoformat("2023-02-26T16:57:41.340Z".replace("Z", "+00:00"))
-# END_DATE = datetime.fromisoformat("2023-05-01T09:28:46.668Z".replace("Z", "+00:00"))
-# END_DATE: datetime | None = datetime.now(tz=UTC) - timedelta(minutes=10)
-
-
-class BackfillAnalysisPBS(BackfillBase):
-    """Backfill PBS analysis data with proposer_name and precomputed columns."""
+class BackfillMissingMEV(BackfillBase):
+    """Backfill PBS analysis for blocks incorrectly marked as vanilla."""
 
     def __init__(self, batch_size: int = LARGE_BATCH_SIZE) -> None:
         """Initialize backfill.
@@ -54,57 +43,30 @@ class BackfillAnalysisPBS(BackfillBase):
         """
         super().__init__(batch_size)
 
-    async def _get_missing_blocks(self, session: AsyncSession) -> list[tuple[int, ...]]:
-        """Get block numbers that exist in blocks table but not in analysis_pbs.
-
-        Returns:
-            List of block numbers that need to be processed
-        """
-        subquery = select(AnalysisPBSDB.block_number).where(
-            AnalysisPBSDB.block_number == BlockDB.number
-        )
-
-        stmt = select(BlockDB.number).where(~subquery.exists())
-
-        if END_DATE is not None:
-            stmt = stmt.where(BlockDB.timestamp <= END_DATE)
-
-        stmt = stmt.order_by(BlockDB.number.desc())
-
-        result = await session.execute(stmt)
-        return [tuple(row) for row in result.fetchall()]
-
-    async def _get_blocks_in_range(
+    async def _get_misclassified_vanilla_blocks(
         self, session: AsyncSession
-    ) -> list[tuple[int, ...]]:
-        """Get ALL block numbers in the date range (for overwrite mode).
+    ) -> list[int]:
+        """Get blocks marked as vanilla in analysis_pbs but have relay data.
 
         Returns:
-            List of block numbers in the date range
+            List of block numbers that need to be reprocessed
         """
-        stmt = select(BlockDB.number).where(BlockDB.timestamp >= START_DATE)
-
-        if END_DATE is not None:
-            stmt = stmt.where(BlockDB.timestamp <= END_DATE)
-
-        stmt = stmt.order_by(BlockDB.number.desc())
-
-        result = await session.execute(stmt)
-        return [tuple(row) for row in result.fetchall()]
-
-    async def _get_block_count(self, session: AsyncSession) -> int:
-        """Get total count of blocks in the blocks table from START_DATE onwards."""
+        # Find blocks where:
+        # 1. is_block_vanilla = True in analysis_pbs
+        # 2. block_number exists in relays_payloads
         stmt = (
-            select(func.count())
-            .select_from(BlockDB)
-            .where(BlockDB.timestamp >= START_DATE)
+            select(AnalysisPBSDB.block_number)
+            .where(AnalysisPBSDB.is_block_vanilla.is_(True))
+            .where(
+                AnalysisPBSDB.block_number.in_(
+                    select(RelaysPayloadsDB.block_number).distinct()
+                )
+            )
+            .order_by(AnalysisPBSDB.block_number)
         )
 
-        if END_DATE is not None:
-            stmt = stmt.where(BlockDB.timestamp <= END_DATE)
-
         result = await session.execute(stmt)
-        return result.scalar_one()
+        return [row[0] for row in result.fetchall()]
 
     async def _aggregate_block_data(
         self, session: AsyncSession, block_numbers: list[int]
@@ -152,7 +114,7 @@ class BackfillAnalysisPBS(BackfillBase):
                     "builder_extra_transfers_wei"
                 ),
                 func.max(UltrasoundAdjustmentDB.delta).label("relay_fee_wei"),
-                # NEW: Get proposer_name from proposer_mapping
+                # Get proposer_name from proposer_mapping
                 func.max(ProposerMappingDB.label).label("proposer_name"),
             )
             .select_from(BlockDB)
@@ -171,7 +133,7 @@ class BackfillAnalysisPBS(BackfillBase):
                 UltrasoundAdjustmentDB,
                 RelaysPayloadsDB.slot == UltrasoundAdjustmentDB.slot,
             )
-            # NEW: Join with proposer_mapping to get proposer_name
+            # Join with proposer_mapping to get proposer_name
             .outerjoin(
                 ProposerMappingDB,
                 RelaysPayloadsDB.proposer_fee_recipient
@@ -236,7 +198,7 @@ class BackfillAnalysisPBS(BackfillBase):
             if total_value < 0 and builder_extra_transfers > 0:
                 total_value += builder_extra_transfers
 
-            # NEW: Compute builder_profit and percentage columns
+            # Compute builder_profit and percentage columns
             builder_profit: float = total_value - proposer_subsidy - (relay_fee or 0.0)
 
             # Only compute percentages when total_value > 0 to avoid division errors
@@ -263,7 +225,6 @@ class BackfillAnalysisPBS(BackfillBase):
                     slot=slot,
                     builder_extra_transfers=builder_extra_transfers,
                     relay_fee=relay_fee,
-                    # NEW fields
                     proposer_name=proposer_name,
                     builder_profit=builder_profit,
                     pct_proposer_share=pct_proposer_share,
@@ -319,52 +280,39 @@ class BackfillAnalysisPBS(BackfillBase):
         """Run the backfill process."""
         await self.create_tables()
 
-        overwrite_mode = END_DATE is not None
-
         async with AsyncSessionLocal() as session:
-            if overwrite_mode:
-                await self._get_block_count(session)
-                blocks_result = await self._get_blocks_in_range(session)
-                blocks_to_process = [row[0] for row in blocks_result]
-                mode_description = "Overwriting all blocks in range"
-            else:
-                blocks_result = await self._get_missing_blocks(session)
-                blocks_to_process = [row[0] for row in blocks_result]
-                mode_description = "Backfilling missing blocks"
+            self.console.print(
+                "[bold blue]Finding Misclassified Vanilla Blocks[/bold blue]"
+            )
+            self.console.print(
+                "[cyan]Looking for blocks marked as vanilla but with relay data...[/cyan]"
+            )
+
+            blocks_to_process = await self._get_misclassified_vanilla_blocks(session)
 
             if not blocks_to_process:
-                if overwrite_mode:
-                    self.console.print(
-                        "[yellow]No blocks found in specified date range[/yellow]"
-                    )
-                else:
-                    self.console.print(
-                        "[yellow]No missing blocks to process - analysis_pbs is "
-                        "up to date[/yellow]"
-                    )
+                self.console.print(
+                    "[green]No misclassified vanilla blocks found. All good![/green]"
+                )
                 return
 
             total_to_process = len(blocks_to_process)
+            min_block = min(blocks_to_process)
+            max_block = max(blocks_to_process)
 
-            self.console.print("[bold blue]Backfilling PBS Analysis Data[/bold blue]")
-            if overwrite_mode:
-                self.console.print(
-                    "[yellow]Mode: OVERWRITE (END_DATE specified)[/yellow]"
-                )
-                self.console.print(
-                    f"[cyan]Date range: {START_DATE} to {END_DATE}[/cyan]"
-                )
-            else:
-                self.console.print(
-                    "[cyan]Mode: Incremental (missing blocks only)[/cyan]"
-                )
-                self.console.print(f"[cyan]Start date: {START_DATE}[/cyan]")
+            self.console.print(
+                f"\nFound [bold]{total_to_process:,}[/bold] misclassified blocks"
+            )
+            self.console.print(f"Block range: {min_block:,} to {max_block:,}")
+            self.console.print("[yellow]These will be reprocessed to fix MEV data[/yellow]\n")
 
             progress = create_standard_progress(console=self.console)
             total_processed = 0
 
             with progress:
-                task_id = progress.add_task(mode_description, total=total_to_process)
+                task_id = progress.add_task(
+                    "Fixing vanilla blocks", total=total_to_process
+                )
 
                 for i in range(0, total_to_process, self.batch_size):
                     batch = blocks_to_process[i : i + self.batch_size]
@@ -374,13 +322,13 @@ class BackfillAnalysisPBS(BackfillBase):
                     total_processed += processed
 
             self.console.print(
-                f"\n[bold green]✓ Backfill completed[/bold green] - "
-                f"Processed {total_processed:,} blocks"
+                f"\n[bold green]✓ Fix completed[/bold green] - "
+                f"Reprocessed {total_processed:,} blocks"
             )
 
 
 if __name__ == "__main__":
     # Batch size limited to 3500 to avoid PostgreSQL's 65535 parameter limit
     # analysis_pbs has 17 fields per row (3500 * 17 = 59500 parameters)
-    backfill = BackfillAnalysisPBS(batch_size=3500)
+    backfill = BackfillMissingMEV(batch_size=3500)
     run(backfill.run())

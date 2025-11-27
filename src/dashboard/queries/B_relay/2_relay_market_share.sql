@@ -72,14 +72,18 @@ SELECT
     CASE
         WHEN rc.relay = 'relay-analytics.ultrasound.money' THEN 'Ultrasound'
         WHEN rc.relay = 'bloxroute.max-profit.blxrbdn.com' THEN 'Bloxroute Max Profit'
-        WHEN rc.relay = 'titanrelay.xyz' THEN 'Titan'
         WHEN rc.relay = 'bloxroute.regulated.blxrbdn.com' THEN 'Bloxroute Regulated'
-        WHEN rc.relay = 'aestus.live' THEN 'Aestus'
-        WHEN rc.relay = 'agnostic-relay.net' THEN 'Agnostic'
+        WHEN rc.relay = 'bloxroute.ethical.blxrbdn.com' THEN 'Bloxroute Ethical'
         WHEN rc.relay = 'boost-relay.flashbots.net' THEN 'Flashbots'
-        WHEN rc.relay = 'relay.ethgas.com' THEN 'EthGas'
-        WHEN rc.relay = 'relay.btcs.com' THEN 'BTCS'
+        WHEN rc.relay = 'agnostic-relay.net' THEN 'Agnostic'
+        WHEN rc.relay = 'titanrelay.xyz' THEN 'Titan'
+        WHEN rc.relay = 'aestus.live' THEN 'Aestus'
+        WHEN rc.relay = 'builder-relay-mainnet.blocknative.com' THEN 'Blocknative'
         WHEN rc.relay = 'mainnet-relay.securerpc.com' THEN 'Secure RPC'
+        WHEN rc.relay = 'relay.ethgas.com' THEN 'EthGas'
+        WHEN rc.relay = 'relay.edennetwork.io' THEN 'Eden Network'
+        WHEN rc.relay = 'relay.btcs.com' THEN 'BTCS'
+        WHEN rc.relay = 'relayooor.wtf' THEN 'Relayooor'
         WHEN rc.relay = 'relay.wenmerge.com' THEN 'Wenmerge'
         ELSE rc.relay
     END as relay,

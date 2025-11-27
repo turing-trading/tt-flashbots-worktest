@@ -56,14 +56,18 @@ SELECT
     CASE
         WHEN relay = 'relay-analytics.ultrasound.money' THEN 'Ultrasound'
         WHEN relay = 'bloxroute.max-profit.blxrbdn.com' THEN 'Bloxroute Max Profit'
-        WHEN relay = 'titanrelay.xyz' THEN 'Titan'
         WHEN relay = 'bloxroute.regulated.blxrbdn.com' THEN 'Bloxroute Regulated'
-        WHEN relay = 'aestus.live' THEN 'Aestus'
-        WHEN relay = 'agnostic-relay.net' THEN 'Agnostic'
+        WHEN relay = 'bloxroute.ethical.blxrbdn.com' THEN 'Bloxroute Ethical'
         WHEN relay = 'boost-relay.flashbots.net' THEN 'Flashbots'
-        WHEN relay = 'relay.ethgas.com' THEN 'EthGas'
-        WHEN relay = 'relay.btcs.com' THEN 'BTCS'
+        WHEN relay = 'agnostic-relay.net' THEN 'Agnostic'
+        WHEN relay = 'titanrelay.xyz' THEN 'Titan'
+        WHEN relay = 'aestus.live' THEN 'Aestus'
+        WHEN relay = 'builder-relay-mainnet.blocknative.com' THEN 'Blocknative'
         WHEN relay = 'mainnet-relay.securerpc.com' THEN 'Secure RPC'
+        WHEN relay = 'relay.ethgas.com' THEN 'EthGas'
+        WHEN relay = 'relay.edennetwork.io' THEN 'Eden Network'
+        WHEN relay = 'relay.btcs.com' THEN 'BTCS'
+        WHEN relay = 'relayooor.wtf' THEN 'Relayooor'
         WHEN relay = 'relay.wenmerge.com' THEN 'Wenmerge'
         ELSE relay
     END as "Relay",
