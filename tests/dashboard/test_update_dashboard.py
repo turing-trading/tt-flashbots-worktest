@@ -8,6 +8,10 @@ import pytest
 
 from typing import TYPE_CHECKING, Never
 
+
+if TYPE_CHECKING:
+    from _pytest.capture import CaptureFixture
+
 import httpx
 from httpx import Request, Response
 
@@ -27,8 +31,19 @@ from src.dashboard.update_dashboard import (
 )
 
 
-if TYPE_CHECKING:
-    from _pytest.capture import CaptureFixture
+def _mock_input_yes(_prompt: object) -> str:
+    """Mock input function that returns 'yes'."""
+    return "yes"
+
+
+def _mock_input_no(_prompt: object) -> str:
+    """Mock input function that returns 'no'."""
+    return "no"
+
+
+def _mock_input_yes_uppercase(_prompt: object) -> str:
+    """Mock input function that returns 'YES'."""
+    return "YES"
 
 
 class TestNameSolver:
@@ -66,7 +81,7 @@ class TestAsyncCustomHost:
     async def test_handle_async_request_calls_solver(self) -> None:
         """Test that handle_async_request uses solver."""
         solver = MagicMock(spec=NameSolver)
-        solver.resolve = MagicMock(side_effect=lambda req: req)
+        solver.resolve = MagicMock(side_effect=lambda req: req)  # type: ignore[misc]
 
         transport = AsyncCustomHost(solver)
 
@@ -361,7 +376,7 @@ class TestConfirmProductionUpdate:
         )
 
         # Mock user input
-        monkeypatch.setattr("builtins.input", lambda _: "yes")
+        monkeypatch.setattr("builtins.input", _mock_input_yes)
 
         result = confirm_production_update(config)
         assert result is True
@@ -378,7 +393,7 @@ class TestConfirmProductionUpdate:
         )
 
         # Mock user input
-        monkeypatch.setattr("builtins.input", lambda _: "no")
+        monkeypatch.setattr("builtins.input", _mock_input_no)
 
         result = confirm_production_update(config)
         assert result is False
@@ -395,7 +410,7 @@ class TestConfirmProductionUpdate:
         )
 
         # Mock user input - note that strip().lower() is applied, so "YES" becomes "yes"
-        monkeypatch.setattr("builtins.input", lambda _: "YES")
+        monkeypatch.setattr("builtins.input", _mock_input_yes_uppercase)
 
         result = confirm_production_update(config)
         # Should be True because the function does .strip().lower()
@@ -428,7 +443,7 @@ class TestMain:
         os.environ["GRAFANA_API_KEY"] = "test-key"
 
         # Mock user declining confirmation
-        monkeypatch.setattr("builtins.input", lambda _: "no")
+        monkeypatch.setattr("builtins.input", _mock_input_no)
 
         exit_code = await main("production")
 
@@ -623,7 +638,7 @@ class TestCLI:
         assert exit_code == 0
 
     def test_cli_help_flag(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: CaptureFixture
+        self, monkeypatch: pytest.MonkeyPatch, capsys: CaptureFixture[str]
     ) -> None:
         """Test CLI with --help flag."""
         test_args = ["update_dashboard.py", "--help"]

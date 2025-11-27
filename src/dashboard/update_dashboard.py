@@ -9,7 +9,7 @@ import json
 import socket
 import sys
 
-from typing import Literal
+from typing import Any, Literal
 
 from grafanalib._gen import DashboardEncoder  # noqa: PLC2701
 import httpx
@@ -117,7 +117,7 @@ def get_production_config() -> DashboardConfig:
     )
 
 
-def get_dashboard_payload(config: DashboardConfig) -> dict[str, str | dict | int]:
+def get_dashboard_payload(config: DashboardConfig) -> dict[str, Any]:
     """Generate dashboard JSON payload for Grafana API.
 
     Args:

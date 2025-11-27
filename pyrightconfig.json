@@ -1,6 +1,8 @@
 {
-  "include": ["src", "tests"],
-  "typeCheckingMode": "basic",
-  "reportMissingTypeStubs": false,
+  "include": [
+    "src",
+    "tests"
+  ],
+  "typeCheckingMode": "strict",
   "stubPath": "./typings"
 }

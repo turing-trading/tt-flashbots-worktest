@@ -112,13 +112,13 @@ async def upsert_model[DBModelType](
     )
 
 
-async def _perform_upsert[DBModelType](
+async def perform_upsert[DBModelType](
     db_model_class: type[DBModelType],
     pydantic_models: Sequence[BaseModel],
     extra_fields: dict[str, Any] | None,
     session: AsyncSession,
 ) -> None:
-    """Internal helper to perform the actual upsert operation.
+    """Perform the actual upsert operation.
 
     Args:
         db_model_class: The SQLAlchemy model class
@@ -196,12 +196,12 @@ async def upsert_models[DBModelType](
     """
     if session is not None:
         # Use provided session (for testing)
-        await _perform_upsert(db_model_class, pydantic_models, extra_fields, session)
+        await perform_upsert(db_model_class, pydantic_models, extra_fields, session)
     else:
         # Create new session (for production)
         async with AsyncSessionLocal() as new_session:
             try:
-                await _perform_upsert(
+                await perform_upsert(
                     db_model_class, pydantic_models, extra_fields, new_session
                 )
             except Exception:

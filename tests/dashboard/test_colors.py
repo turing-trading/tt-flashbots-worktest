@@ -1,5 +1,7 @@
 """Tests for color utility functions."""
 
+from typing import Any
+
 from src.dashboard.colors import (
     get_builder_color_overrides,
     get_combined_overrides,
@@ -16,16 +18,22 @@ def test_get_combined_overrides_empty() -> None:
 
 def test_get_combined_overrides_single_list() -> None:
     """Test get_combined_overrides with a single list."""
-    overrides = [{"matcher": {"id": "byName"}, "properties": []}]
+    overrides: list[dict[str, Any]] = [{"matcher": {"id": "byName"}, "properties": []}]
     result = get_combined_overrides(overrides)
     assert result == overrides
 
 
 def test_get_combined_overrides_multiple_lists() -> None:
     """Test get_combined_overrides with multiple lists."""
-    list1 = [{"matcher": {"id": "byName", "options": "test1"}, "properties": []}]
-    list2 = [{"matcher": {"id": "byName", "options": "test2"}, "properties": []}]
-    list3 = [{"matcher": {"id": "byName", "options": "test3"}, "properties": []}]
+    list1: list[dict[str, Any]] = [
+        {"matcher": {"id": "byName", "options": "test1"}, "properties": []}
+    ]
+    list2: list[dict[str, Any]] = [
+        {"matcher": {"id": "byName", "options": "test2"}, "properties": []}
+    ]
+    list3: list[dict[str, Any]] = [
+        {"matcher": {"id": "byName", "options": "test3"}, "properties": []}
+    ]
 
     result = get_combined_overrides(list1, list2, list3)
 

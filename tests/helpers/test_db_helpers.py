@@ -18,6 +18,11 @@ from src.data.blocks.models import Block
 from src.helpers.db import get_database_url, upsert_model, upsert_models
 
 
+def _mock_inspect_returns_none(_model: object) -> None:
+    """Mock inspect function that returns None."""
+    return
+
+
 class TestUpsertModelUnit:
     """Unit tests for upsert_model function with mocking."""
 
@@ -48,14 +53,14 @@ class TestUpsertModelUnit:
         mock_session_factory = MagicMock(return_value=MockSessionContext())
         monkeypatch.setattr("src.helpers.db.AsyncSessionLocal", mock_session_factory)
 
-        # Mock _perform_upsert to avoid actual database operations
+        # Mock perform_upsert to avoid actual database operations
         perform_upsert_called = False
 
-        async def mock_perform_upsert(*args: object, **kwargs: object) -> None:
+        async def mockperform_upsert(*args: object, **kwargs: object) -> None:
             nonlocal perform_upsert_called
             perform_upsert_called = True
 
-        monkeypatch.setattr("src.helpers.db._perform_upsert", mock_perform_upsert)
+        monkeypatch.setattr("src.helpers.db.perform_upsert", mockperform_upsert)
 
         block = Block(
             number=1,
@@ -81,7 +86,7 @@ class TestUpsertModelUnit:
 
         await upsert_model(db_model_class=BlockDB, pydantic_model=block)
 
-        # Verify _perform_upsert was called
+        # Verify perform_upsert was called
         assert perform_upsert_called
 
 
@@ -119,7 +124,7 @@ class TestUpsertModelsUnit:
         mock_session_factory = MagicMock(return_value=MockSessionContext())
         monkeypatch.setattr("src.helpers.db.AsyncSessionLocal", mock_session_factory)
 
-        # Mock inspect for _perform_upsert
+        # Mock inspect for perform_upsert
         class MockColumn:  # noqa: B903
             def __init__(self, name: str) -> None:
                 self.name = name
@@ -247,12 +252,12 @@ class TestUpsertModelsUnit:
         mock_session_factory = MagicMock(return_value=MockSessionContext())
         monkeypatch.setattr("src.helpers.db.AsyncSessionLocal", mock_session_factory)
 
-        # Mock _perform_upsert to raise an error
-        async def mock_perform_upsert(*args: object, **kwargs: object) -> Never:
+        # Mock perform_upsert to raise an error
+        async def mockperform_upsert(*args: object, **kwargs: object) -> Never:
             msg = "Test error"
             raise RuntimeError(msg)
 
-        monkeypatch.setattr("src.helpers.db._perform_upsert", mock_perform_upsert)
+        monkeypatch.setattr("src.helpers.db.perform_upsert", mockperform_upsert)
 
         block = Block(
             number=1,
@@ -282,11 +287,11 @@ class TestUpsertModelsUnit:
 
 
 class TestPerformUpsertUnit:
-    """Unit tests for _perform_upsert function with mocking."""
+    """Unit tests for perform_upsert function with mocking."""
 
     @pytest.mark.asyncio
-    async def test_perform_upsert_logic(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test _perform_upsert internal logic with mocked database."""
+    async def testperform_upsert_logic(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test perform_upsert internal logic with mocked database."""
         from datetime import UTC, datetime
         from unittest.mock import AsyncMock
 
@@ -294,8 +299,7 @@ class TestPerformUpsertUnit:
 
         from src.data.blocks.db import BlockDB
         from src.data.blocks.models import Block
-        from src.helpers.db import _perform_upsert  # noqa: PLC2701
-
+        from src.helpers.db import perform_upsert
         # Mock session
         mock_session = AsyncMock()
         mock_session.execute = AsyncMock()
@@ -334,8 +338,8 @@ class TestPerformUpsertUnit:
             extra_data="0x",
         )
 
-        # Call _perform_upsert - covers lines 126-161
-        await _perform_upsert(
+        # Call perform_upsert - covers lines 126-161
+        await perform_upsert(
             db_model_class=BlockDB,
             pydantic_models=[block],
             extra_fields=None,
@@ -346,18 +350,17 @@ class TestPerformUpsertUnit:
         assert mock_session.execute.called
 
     @pytest.mark.asyncio
-    async def test_perform_upsert_with_empty_list(self) -> None:
-        """Test _perform_upsert early return with empty list."""
+    async def testperform_upsert_with_empty_list(self) -> None:
+        """Test perform_upsert early return with empty list."""
         from unittest.mock import AsyncMock
 
         from src.data.blocks.db import BlockDB
-        from src.helpers.db import _perform_upsert  # noqa: PLC2701
-
+        from src.helpers.db import perform_upsert
         mock_session = AsyncMock()
         mock_session.execute = AsyncMock()
 
         # Call with empty list - should return early (line 142)
-        await _perform_upsert(
+        await perform_upsert(
             db_model_class=BlockDB,
             pydantic_models=[],
             extra_fields=None,
@@ -368,18 +371,17 @@ class TestPerformUpsertUnit:
         assert not mock_session.execute.called
 
     @pytest.mark.asyncio
-    async def test_perform_upsert_invalid_model_raises(
+    async def testperform_upsert_invalid_model_raises(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test _perform_upsert raises ValueError for uninspectable model."""
+        """Test perform_upsert raises ValueError for uninspectable model."""
         from datetime import UTC, datetime
         from unittest.mock import AsyncMock
 
         from src.data.blocks.models import Block
-        from src.helpers.db import _perform_upsert  # noqa: PLC2701
-
+        from src.helpers.db import perform_upsert
         # Mock inspect to return None
-        monkeypatch.setattr("src.helpers.db.inspect", lambda _: None)
+        monkeypatch.setattr("src.helpers.db.inspect", _mock_inspect_returns_none)
 
         mock_session = AsyncMock()
 
@@ -404,7 +406,7 @@ class TestPerformUpsertUnit:
 
         # Should raise ValueError - covers lines 136-137
         with pytest.raises(ValueError, match="Cannot inspect"):
-            await _perform_upsert(
+            await perform_upsert(
                 db_model_class=object,  # type: ignore[arg-type]
                 pydantic_models=[block],
                 extra_fields=None,
@@ -412,10 +414,10 @@ class TestPerformUpsertUnit:
             )
 
     @pytest.mark.asyncio
-    async def test_perform_upsert_with_extra_fields(
+    async def testperform_upsert_with_extra_fields(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test _perform_upsert with extra_fields parameter."""
+        """Test perform_upsert with extra_fields parameter."""
         from datetime import UTC, datetime
         from unittest.mock import AsyncMock
 
@@ -423,8 +425,7 @@ class TestPerformUpsertUnit:
 
         from src.data.blocks.db import BlockDB
         from src.data.blocks.models import Block
-        from src.helpers.db import _perform_upsert  # noqa: PLC2701
-
+        from src.helpers.db import perform_upsert
         # Mock session
         mock_session = AsyncMock()
         mock_session.execute = AsyncMock()
@@ -463,8 +464,8 @@ class TestPerformUpsertUnit:
             extra_data="0x",
         )
 
-        # Call _perform_upsert with extra_fields - covers lines 129-131
-        await _perform_upsert(
+        # Call perform_upsert with extra_fields - covers lines 129-131
+        await perform_upsert(
             db_model_class=BlockDB,
             pydantic_models=[block],
             extra_fields={"miner": "0xoverridden"},  # Use a real Block field
@@ -942,14 +943,14 @@ class TestCreateTables:
 
 
 class TestPerformUpsertErrorHandling:
-    """Tests for _perform_upsert error handling."""
+    """Tests for perform_upsert error handling."""
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    async def test_perform_upsert_invalid_model_class(
+    async def testperform_upsert_invalid_model_class(
         self, test_db_engine: AsyncSession, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test _perform_upsert handles uninspectable model by checking mapper."""
+        """Test perform_upsert handles uninspectable model by checking mapper."""
         import sqlalchemy
 
         from src.helpers.db import upsert_models

@@ -1,5 +1,7 @@
 """Backfill proposer mapping data from OpenEthData parquet file."""
 
+from typing import TYPE_CHECKING, BinaryIO, Protocol, cast
+
 from asyncio import run
 
 import pandas as pd
@@ -12,6 +14,30 @@ from src.data.proposers.models import ProposerMapping
 from src.helpers.backfill import BackfillBase
 from src.helpers.db import AsyncSessionLocal, upsert_models
 from src.helpers.progress import create_standard_progress
+
+
+if TYPE_CHECKING:
+    from pandas import DataFrame
+
+
+class _ReadParquetProtocol(Protocol):
+    """Protocol for pandas.read_parquet with properly typed signature."""
+
+    def __call__(self, source: BinaryIO) -> DataFrame: ...
+
+
+_READ_PARQUET_ATTR: str = "read_parquet"
+
+
+def _read_parquet(source: BinaryIO) -> pd.DataFrame:
+    """Typed wrapper for pandas.read_parquet.
+
+    Uses getattr with a variable attribute name to avoid:
+    - pyright reportUnknownMemberType (pandas-stubs has Unknown in filters param)
+    - ruff B009 (disallows getattr with constant attribute)
+    """
+    read_func = cast("_ReadParquetProtocol", getattr(pd, _READ_PARQUET_ATTR))
+    return read_func(source)
 
 
 PARQUET_URL = "https://storage.googleapis.com/public_eth_data/openethdata/validator_data.parquet.gzip"
@@ -38,7 +64,7 @@ class BackfillProposerMapping(BackfillBase):
         # Read parquet from bytes
         import io
 
-        df = pd.read_parquet(io.BytesIO(response.content))
+        df = _read_parquet(io.BytesIO(response.content))
         self.console.print(f"[green]Downloaded {len(df):,} validator records[/green]")
         return df
 

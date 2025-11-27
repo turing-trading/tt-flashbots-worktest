@@ -1,18 +1,22 @@
 """Helper functions for creating Grafana panels."""
 
-from typing import Any
+from typing import Any, cast
 
 import attr
 from grafanalib.core import (
     BarChart,
     GridPos,
-    Panel,  # type: ignore[attr-defined]
+    Panel,
     PieChartv2,
     RowPanel,
     Stat,
     Table,
     TimeSeries,
 )
+
+
+# Type alias for Panel base class (attrs inheritance doesn't work well with stubs)
+_PanelBase: type[Any] = Panel
 
 
 def create_row(title: str, y: int, collapsed: bool = False) -> RowPanel:
@@ -440,7 +444,7 @@ def create_table(
 
 
 @attr.s
-class XYChart(Panel):
+class XYChart(_PanelBase):  # type: ignore[misc]
     """XY Chart panel for scatter plots."""
 
     xField: str = attr.ib(default="x")  # noqa: N815
@@ -448,12 +452,12 @@ class XYChart(Panel):
     colorField: str | None = attr.ib(default=None)  # noqa: N815
     seriesMapping: str = attr.ib(default="auto")  # noqa: N815
     unit: str = attr.ib(default="short")
-    transformations: list[dict[str, Any]] = attr.ib(factory=list)
-    overrides: list[dict[str, Any]] = attr.ib(factory=list)
+    transformations: list[dict[str, Any]] = attr.ib(factory=list)  # type: ignore[var-annotated]
+    overrides: list[dict[str, Any]] = attr.ib(factory=list)  # type: ignore[var-annotated]
 
     def to_json_data(self) -> dict[str, Any]:
         """Convert to JSON data for Grafana."""
-        panel_json = super().panel_json(overrides={})
+        panel_json: dict[str, Any] = super().panel_json(overrides={})  # type: ignore[misc]
         panel_json["type"] = "xychart"
         panel_json["fieldConfig"] = {
             "defaults": {
@@ -497,7 +501,7 @@ class XYChart(Panel):
             }
 
         panel_json["options"] = options
-        return panel_json
+        return cast("dict[str, Any]", panel_json)
 
 
 def create_scatter_plot(
@@ -553,11 +557,11 @@ def create_scatter_plot(
 
 
 @attr.s
-class SankeyPanel(Panel):
+class SankeyPanel(_PanelBase):  # type: ignore[misc]
     """Sankey diagram panel for flow visualization."""
 
-    transformations: list[dict[str, Any]] = attr.ib(factory=list)
-    overrides: list[dict[str, Any]] = attr.ib(factory=list)
+    transformations: list[dict[str, Any]] = attr.ib(factory=list)  # type: ignore[var-annotated]
+    overrides: list[dict[str, Any]] = attr.ib(factory=list)  # type: ignore[var-annotated]
     unit: str | None = attr.ib(default=None)
 
     def to_json_data(self) -> dict[str, Any]:
@@ -566,7 +570,7 @@ class SankeyPanel(Panel):
         if self.unit:
             defaults["unit"] = self.unit
 
-        panel_data = self.panel_json({
+        panel_data: dict[str, Any] = self.panel_json({  # type: ignore[misc]
             "type": "netsage-sankey-panel",
             "options": {},
             "fieldConfig": {

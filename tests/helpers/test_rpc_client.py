@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from typing import Any
+
 import httpx
 
 from src.helpers.rpc import RPCClient
@@ -99,7 +101,10 @@ class TestRPCClient:
         ]
         mock_http_client.post.return_value = mock_response
 
-        requests = [("eth_blockNumber", []), ("eth_getBlockByNumber", ["0x1", True])]
+        requests: list[tuple[str, list[Any]]] = [
+            ("eth_blockNumber", []),
+            ("eth_getBlockByNumber", ["0x1", True]),
+        ]
         results = await client.batch_call(mock_http_client, requests)
 
         assert len(results) == 2

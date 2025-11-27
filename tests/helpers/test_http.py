@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -531,7 +531,7 @@ class TestHandleHttpErrors:
         )
 
         @handle_http_errors(default_return=[], log_errors=False)
-        async def fetch_items(client: httpx.AsyncClient) -> list[dict]:
+        async def fetch_items(client: httpx.AsyncClient) -> list[dict[str, Any]]:
             response = await client.get("https://api.example.com/missing")
             response.raise_for_status()
             return response.json()
@@ -553,7 +553,7 @@ class TestHandleHttpErrors:
         )
 
         @handle_http_errors(default_return={"error": True}, log_errors=False)
-        async def fetch_data(client: httpx.AsyncClient) -> dict:
+        async def fetch_data(client: httpx.AsyncClient) -> dict[str, Any]:
             response = await client.get("https://api.example.com/error")
             response.raise_for_status()
             return response.json()
@@ -574,13 +574,13 @@ class TestHandleHttpErrors:
         )
 
         @handle_http_errors(default_return=None, log_errors=False)
-        async def fetch_status(client: httpx.AsyncClient) -> dict:
+        async def fetch_status(client: httpx.AsyncClient) -> dict[str, Any]:
             response = await client.get("https://api.example.com/data")
             response.raise_for_status()
             return response.json()
 
         async with httpx.AsyncClient() as client:
-            result = await fetch_status(client)
+            result: dict[str, Any] | None = await fetch_status(client)
 
         assert result == {"status": "ok"}
 
@@ -629,7 +629,9 @@ class TestHttpIntegrationWithDecorators:
 
         @handle_http_errors(default_return={"default": True}, log_errors=False)
         @retry_with_backoff(max_retries=3, base_delay=0.01, log_errors=False)
-        async def fetch_with_both(client: httpx.AsyncClient, url: str) -> dict:
+        async def fetch_with_both(
+            client: httpx.AsyncClient, url: str
+        ) -> dict[str, Any]:
             nonlocal call_count
             call_count += 1
             response = await client.get(url)
@@ -764,13 +766,13 @@ class TestHandleHttpErrorsLogging:
         )
 
         @handle_http_errors(default_return=None, log_errors=True)
-        async def fetch_missing(client: httpx.AsyncClient) -> dict:
+        async def fetch_missing(client: httpx.AsyncClient) -> dict[str, Any]:
             response = await client.get("https://api.example.com/missing")
             response.raise_for_status()
             return response.json()
 
         async with httpx.AsyncClient() as client:
-            result = await fetch_missing(client)
+            result: dict[str, Any] | None = await fetch_missing(client)
 
         assert result is None
         # 404s should be logged at debug level
@@ -792,13 +794,13 @@ class TestHandleHttpErrorsLogging:
         )
 
         @handle_http_errors(default_return=None, log_errors=True)
-        async def fetch_error(client: httpx.AsyncClient) -> dict:
+        async def fetch_error(client: httpx.AsyncClient) -> dict[str, Any]:
             response = await client.get("https://api.example.com/error")
             response.raise_for_status()
             return response.json()
 
         async with httpx.AsyncClient() as client:
-            result = await fetch_error(client)
+            result: dict[str, Any] | None = await fetch_error(client)
 
         assert result is None
         # Non-404 errors should be logged with status code
@@ -816,12 +818,12 @@ class TestHandleHttpErrorsLogging:
         httpx_mock.add_exception(httpx.ConnectError("Connection failed"))
 
         @handle_http_errors(default_return=None, log_errors=True)
-        async def fetch_connect_error(client: httpx.AsyncClient) -> dict:
+        async def fetch_connect_error(client: httpx.AsyncClient) -> dict[str, Any]:
             response = await client.get("https://api.example.com/data")
             return response.json()
 
         async with httpx.AsyncClient() as client:
-            result = await fetch_connect_error(client)
+            result: dict[str, Any] | None = await fetch_connect_error(client)
 
         assert result is None
         assert any("HTTP error" in record.message for record in caplog.records)
@@ -836,11 +838,11 @@ class TestHandleHttpErrorsLogging:
         caplog.set_level(logging.ERROR)
 
         @handle_http_errors(default_return=None, log_errors=True)
-        async def raises_unexpected() -> dict:
+        async def raises_unexpected() -> dict[str, Any]:
             msg = "Unexpected error"
             raise RuntimeError(msg)
 
-        result = await raises_unexpected()
+        result: dict[str, Any] | None = await raises_unexpected()
 
         assert result is None
         assert any(

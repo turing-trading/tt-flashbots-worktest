@@ -1,6 +1,40 @@
 
 from typing import Any
 
+class Panel:
+    """Base class for Grafana panels."""
+
+    def __init__(
+        self,
+        dataSource: Any = ...,
+        targets: Any = ...,
+        title: Any = ...,
+        cacheTimeout: Any = ...,
+        description: Any = ...,
+        editable: Any = ...,
+        error: Any = ...,
+        height: Any = ...,
+        gridPos: Any = ...,
+        hideTimeOverride: Any = ...,
+        id: Any = ...,
+        interval: Any = ...,
+        links: Any = ...,
+        maxDataPoints: Any = ...,
+        minSpan: Any = ...,
+        repeat: Any = ...,
+        span: Any = ...,
+        thresholds: Any = ...,
+        thresholdType: Any = ...,
+        timeFrom: Any = ...,
+        timeShift: Any = ...,
+        transparent: Any = ...,
+        transformations: Any = ...,
+        extraJson: Any = ...,
+    ) -> None: ...
+    def panel_json(self) -> dict[str, Any]: ...
+    def to_json_data(self) -> dict[str, Any]: ...
+
+
 class Dashboard:
     def __init__(
         self,

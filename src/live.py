@@ -892,6 +892,16 @@ class LiveProcessor:
             # Calculate builder profit
             builder_profit = total_value - proposer_subsidy - (relay_fee or 0.0)
 
+            # Compute percentage columns (only when total_value > 0)
+            pct_proposer_share: float | None = None
+            pct_builder_share: float | None = None
+            pct_relay_fee: float | None = None
+
+            if total_value > 0:
+                pct_proposer_share = (proposer_subsidy / total_value) * 100
+                pct_builder_share = (builder_profit / total_value) * 100
+                pct_relay_fee = ((relay_fee or 0.0) / total_value) * 100
+
             # Create analysis model
             analysis = AnalysisPBS(
                 block_number=block_number,
@@ -908,6 +918,9 @@ class LiveProcessor:
                 relay_fee=relay_fee,
                 proposer_name=proposer_name,
                 builder_profit=builder_profit,
+                pct_proposer_share=pct_proposer_share,
+                pct_builder_share=pct_builder_share,
+                pct_relay_fee=pct_relay_fee,
             )
 
             # Store in database

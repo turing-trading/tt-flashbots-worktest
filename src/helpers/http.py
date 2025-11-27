@@ -3,7 +3,7 @@
 from contextlib import asynccontextmanager
 from functools import wraps
 
-from typing import TYPE_CHECKING, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, overload
 
 from asyncio import sleep
 
@@ -124,7 +124,7 @@ def retry_with_backoff(
 
 def create_http_client(
     timeout: float = DEFAULT_TIMEOUT,
-    **kwargs,  # noqa: ANN003
+    **kwargs: Any,
 ) -> httpx.AsyncClient:
     """Create a configured httpx AsyncClient.
 
@@ -146,11 +146,27 @@ def create_http_client(
     return httpx.AsyncClient(timeout=timeout, **kwargs)
 
 
-def handle_http_errors[T, **P](
+@overload
+def handle_http_errors(
+    default_return: None = None,
+    *,
+    log_errors: bool = ...,
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T | None]]]: ...  # type: ignore[reportUnknownReturnType]
+
+
+@overload
+def handle_http_errors[T](
+    default_return: T,
+    *,
+    log_errors: bool = ...,
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]: ...  # type: ignore[reportUnknownReturnType]
+
+
+def handle_http_errors[T](
     default_return: T | None = None,
     *,
     log_errors: bool = True,
-) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T | None]]]:
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T | None]]]:  # type: ignore[reportUnknownReturnType]
     """Decorator to handle HTTP errors gracefully.
 
     Args:
@@ -174,7 +190,9 @@ def handle_http_errors[T, **P](
         ```
     """
 
-    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T | None]]:
+    def decorator(
+        func: Callable[P, Awaitable[T]],
+    ) -> Callable[P, Awaitable[T | None]]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | None:
             try:

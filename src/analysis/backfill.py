@@ -31,8 +31,8 @@ if TYPE_CHECKING:
 
 
 # Default to process last year of data
-START_DATE: datetime = datetime.now(tz=UTC) - timedelta(days=1)
-END_DATE: datetime | None = datetime.now(tz=UTC) - timedelta(minutes=10)
+START_DATE: datetime = datetime.now(tz=UTC) - timedelta(days=5)
+END_DATE: datetime | None = datetime.now(tz=UTC) - timedelta(minutes=5)
 
 
 class BackfillAnalysisPBS(BackfillBase):

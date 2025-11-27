@@ -3,6 +3,8 @@
 from datetime import datetime
 import os
 
+from typing import Any
+
 import asyncio
 
 from sqlalchemy import text
@@ -20,8 +22,8 @@ START_DATE = datetime.fromisoformat("2023-02-26T16:57:41.340Z")
 END_DATE = datetime.fromisoformat("2023-05-01T09:28:46.668Z")
 
 # Block range for the date range (pre-computed)
-START_BLOCK = 15537394
-END_BLOCK = 23886493
+START_BLOCK = 23889351 - 12 * 60 * 24 * 30
+END_BLOCK = 23889351
 
 # beaconcha.in relay tag to canonical relay name mapping
 RELAY_TAG_MAPPING = {
@@ -92,7 +94,7 @@ async def get_missing_blocks() -> list[int]:
 
 async def fetch_blocks_batch(
     client: httpx.AsyncClient, block_numbers: list[int]
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Fetch multiple blocks from beaconcha.in API (up to 100 at once)."""
     if not block_numbers:
         return []
@@ -100,14 +102,17 @@ async def fetch_blocks_batch(
     # Create comma-separated block numbers
     blocks_param = ",".join(str(b) for b in block_numbers)
     url = f"{BEACONCHAIN_API}/{blocks_param}"
-    headers = {"apikey": BEACONCHAIN_API_KEY}
 
     try:
-        response = await client.get(url, headers=headers, timeout=60)  # type: ignore[reportUnknownReturnType]
+        request_headers: dict[str, str] = {}
+        if BEACONCHAIN_API_KEY:
+            request_headers["apikey"] = BEACONCHAIN_API_KEY
+        response = await client.get(url, headers=request_headers, timeout=60)
         response.raise_for_status()
-        data = response.json()
+        data: dict[str, Any] = response.json()
         if data.get("status") == "OK" and data.get("data"):
-            return data["data"]
+            result: list[dict[str, Any]] = data["data"]
+            return result
     except Exception as e:
         console.print(
             f"[red]Error fetching batch of {len(block_numbers)} blocks: {e}[/red]"
@@ -131,7 +136,7 @@ def map_relay_tag(tag: str | None) -> str | None:
     return None
 
 
-def extract_relay_payload(block_data: dict) -> dict | None:
+def extract_relay_payload(block_data: dict[str, Any]) -> dict[str, Any] | None:
     """Extract relay payload data from block data."""
     relay_info = block_data.get("relay")
     if not relay_info:
@@ -162,7 +167,7 @@ def extract_relay_payload(block_data: dict) -> dict | None:
     }
 
 
-async def upsert_batch(payloads: list[dict]) -> int:
+async def upsert_batch(payloads: list[dict[str, Any]]) -> int:
     """Upsert a batch of relay payloads to the database with retry logic."""
     if not payloads:
         return 0
@@ -222,7 +227,7 @@ async def main() -> None:
     inserted = 0
     skipped_vanilla = 0
     errors = 0
-    db_batch: list[dict] = []
+    db_batch: list[dict[str, Any]] = []
 
     # Calculate total API requests needed
     total_api_requests = (total_blocks + API_BATCH_SIZE - 1) // API_BATCH_SIZE
