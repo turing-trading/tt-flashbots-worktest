@@ -1,20 +1,23 @@
 """Backfill relays_payloads from beaconcha.in API for missing blocks."""
 
-import asyncio
 from datetime import datetime
+import os
 
-import httpx
-from rich.console import Console
+import asyncio
+
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-import os
+import httpx
+from rich.console import Console
+
 from src.helpers.db import AsyncSessionLocal
 from src.helpers.progress import create_standard_progress
 
+
 # Configuration - Update these for your date range
-START_DATE = datetime.fromisoformat("2023-02-26T16:57:41.340Z".replace("Z", "+00:00"))
-END_DATE = datetime.fromisoformat("2023-05-01T09:28:46.668Z".replace("Z", "+00:00"))
+START_DATE = datetime.fromisoformat("2023-02-26T16:57:41.340Z")
+END_DATE = datetime.fromisoformat("2023-05-01T09:28:46.668Z")
 
 # Block range for the date range (pre-computed)
 START_BLOCK = 15537394
@@ -49,31 +52,41 @@ console = Console()
 
 
 async def get_missing_blocks() -> list[int]:
-    """Get block numbers that are missing from relays_payloads."""
+    """Get block numbers that are missing from relays_payloads.
+
+    Returns:
+        list[int]: List of block numbers that are missing from relays_payloads.
+
+    Raises:
+        OperationalError: If the database connection fails.
+    """
     for attempt in range(MAX_RETRIES):
         try:
             async with AsyncSessionLocal() as session:
                 result = await session.execute(
                     text("""
-                    SELECT b.number
-                    FROM blocks b
-                    LEFT JOIN (
-                        SELECT DISTINCT block_number FROM relays_payloads
-                        WHERE block_number >= :start_block AND block_number <= :end_block
-                    ) rp ON b.number = rp.block_number
-                    WHERE b.number >= :start_block AND b.number <= :end_block
-                      AND rp.block_number IS NULL
-                    ORDER BY b.number
+                SELECT b.number
+                FROM blocks b
+                LEFT JOIN (
+                    SELECT DISTINCT block_number FROM relays_payloads
+                    WHERE block_number >= :start_block AND block_number <= :end_block
+                ) rp ON b.number = rp.block_number
+                WHERE b.number >= :start_block AND b.number <= :end_block
+                    AND rp.block_number IS NULL
+                ORDER BY b.number
                 """),
                     {"start_block": START_BLOCK, "end_block": END_BLOCK},
                 )
                 return [row[0] for row in result.fetchall()]
-        except OperationalError as e:
+        except OperationalError:
             if attempt < MAX_RETRIES - 1:
-                console.print(f"[yellow]DB connection error, retrying ({attempt + 1}/{MAX_RETRIES})...[/yellow]")
+                console.print(
+                    "[yellow]DB connection error, retrying "
+                    f"({attempt + 1}/{MAX_RETRIES})...[/yellow]"
+                )
                 await asyncio.sleep(RETRY_DELAY)
             else:
-                raise e
+                raise
     return []
 
 
@@ -90,13 +103,15 @@ async def fetch_blocks_batch(
     headers = {"apikey": BEACONCHAIN_API_KEY}
 
     try:
-        response = await client.get(url, headers=headers, timeout=60)
+        response = await client.get(url, headers=headers, timeout=60)  # type: ignore[reportUnknownReturnType]
         response.raise_for_status()
         data = response.json()
         if data.get("status") == "OK" and data.get("data"):
             return data["data"]
     except Exception as e:
-        console.print(f"[red]Error fetching batch of {len(block_numbers)} blocks: {e}[/red]")
+        console.print(
+            f"[red]Error fetching batch of {len(block_numbers)} blocks: {e}[/red]"
+        )
     return []
 
 
@@ -171,10 +186,15 @@ async def upsert_batch(payloads: list[dict]) -> int:
             return len(payloads)
         except OperationalError as e:
             if attempt < MAX_RETRIES - 1:
-                console.print(f"[yellow]DB connection error during upsert, retrying ({attempt + 1}/{MAX_RETRIES})...[/yellow]")
+                console.print(
+                    "[yellow]DB connection error during upsert, retrying "
+                    f"({attempt + 1}/{MAX_RETRIES})...[/yellow]"
+                )
                 await asyncio.sleep(RETRY_DELAY)
             else:
-                console.print(f"[red]Failed to upsert after {MAX_RETRIES} attempts: {e}[/red]")
+                console.print(
+                    f"[red]Failed to upsert after {MAX_RETRIES} attempts: {e}[/red]"
+                )
                 return 0
 
     return 0
@@ -213,7 +233,7 @@ async def main() -> None:
         async with httpx.AsyncClient() as client:
             for i in range(0, total_blocks, API_BATCH_SIZE):
                 # Get batch of block numbers
-                batch_blocks = missing_blocks[i:i + API_BATCH_SIZE]
+                batch_blocks = missing_blocks[i : i + API_BATCH_SIZE]
                 batch_num = i // API_BATCH_SIZE + 1
 
                 # Fetch batch from API
@@ -244,7 +264,11 @@ async def main() -> None:
                 progress.update(
                     task_id,
                     completed=blocks_processed,
-                    description=f"Batch {batch_num}/{total_api_requests} | Block {last_block:,} (ok: {inserted:,}, vanilla: {skipped_vanilla:,}, err: {errors})",
+                    description=(
+                        f"Batch {batch_num}/{total_api_requests} |"
+                        f" Block {last_block:,} (ok: {inserted:,},"
+                        f" vanilla: {skipped_vanilla:,}, err: {errors})"
+                    ),
                 )
 
                 # Rate limiting between API requests

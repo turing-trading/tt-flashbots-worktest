@@ -155,7 +155,8 @@ class TestUltrasoundAdjustment:
             fetched_at=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
         )
 
-        assert adjustment.delta is not None and adjustment.delta > 0
+        assert adjustment.delta is not None
+        assert adjustment.delta > 0
         assert adjustment.adjusted_value is not None
         assert adjustment.submitted_value is not None
         assert adjustment.adjusted_value > adjustment.submitted_value
@@ -175,7 +176,8 @@ class TestUltrasoundAdjustment:
             fetched_at=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
         )
 
-        assert adjustment.delta is not None and adjustment.delta < 0
+        assert adjustment.delta is not None
+        assert adjustment.delta < 0
         assert adjustment.adjusted_value is not None
         assert adjustment.submitted_value is not None
         assert adjustment.adjusted_value < adjustment.submitted_value

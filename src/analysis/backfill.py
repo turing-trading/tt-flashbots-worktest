@@ -1,6 +1,6 @@
 """Backfill PBS analysis data with proposer_name and precomputed columns."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 
 from typing import TYPE_CHECKING
 
@@ -35,8 +35,8 @@ if TYPE_CHECKING:
 # 2024-01-01
 # START_DATE = datetime(2023, 4, 14, tzinfo=UTC)
 # END_DATE = datetime(2024, 4, 8, tzinfo=UTC)
-START_DATE = datetime.fromisoformat("2022-10-07T00:51:47.941Z".replace("Z", "+00:00"))
-END_DATE = datetime.fromisoformat("2023-01-30T12:43:09.729Z".replace("Z", "+00:00"))
+START_DATE = datetime.fromisoformat("2022-10-07T00:51:47.941Z")
+END_DATE = datetime.fromisoformat("2023-01-30T12:43:09.729Z")
 
 # START_DATE = datetime.fromisoformat("2023-02-26T16:57:41.340Z".replace("Z", "+00:00"))
 # END_DATE = datetime.fromisoformat("2023-05-01T09:28:46.668Z".replace("Z", "+00:00"))

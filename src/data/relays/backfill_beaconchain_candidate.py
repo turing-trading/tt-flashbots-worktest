@@ -4,16 +4,19 @@ Finds blocks where the miner has used relays before but the specific block
 is not in relays_payloads, then fetches relay data from beaconcha.in API.
 """
 
+import os
+
 import asyncio
 
-import httpx
-from rich.console import Console
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-import os
+import httpx
+from rich.console import Console
+
 from src.helpers.db import AsyncSessionLocal
 from src.helpers.progress import create_standard_progress
+
 
 # beaconcha.in relay tag to canonical relay name mapping
 RELAY_TAG_MAPPING = {
@@ -48,6 +51,9 @@ async def get_candidate_blocks() -> list[int]:
 
     Finds blocks where the miner has used relays before but the specific
     block is not in relays_payloads.
+
+    Raises:
+        OperationalError: If the database connection fails.
     """
     console.print("[cyan]Step 1: Finding miners that have used relays...[/cyan]")
 
@@ -63,7 +69,9 @@ async def get_candidate_blocks() -> list[int]:
                 """)
                 )
                 relay_miners = [row[0] for row in result.fetchall()]
-                console.print(f"  Found {len(relay_miners):,} miners that have used relays")
+                console.print(
+                    f"  Found {len(relay_miners):,} miners that have used relays"
+                )
 
                 console.print("[cyan]Step 2: Finding candidate blocks...[/cyan]")
 
@@ -80,14 +88,15 @@ async def get_candidate_blocks() -> list[int]:
                     {"miners": relay_miners},
                 )
                 return [row[0] for row in result.fetchall()]
-        except OperationalError as e:
+        except OperationalError:
             if attempt < MAX_RETRIES - 1:
                 console.print(
-                    f"[yellow]DB connection error, retrying ({attempt + 1}/{MAX_RETRIES})...[/yellow]"
+                    "[yellow]DB connection error, retrying "
+                    f"({attempt + 1}/{MAX_RETRIES})...[/yellow]"
                 )
                 await asyncio.sleep(RETRY_DELAY)
             else:
-                raise e
+                raise
     return []
 
 
@@ -104,13 +113,15 @@ async def fetch_blocks_batch(
     headers = {"apikey": BEACONCHAIN_API_KEY}
 
     try:
-        response = await client.get(url, headers=headers, timeout=60)
+        response = await client.get(url, headers=headers, timeout=60)  # type: ignore[reportUnknownReturnType]
         response.raise_for_status()
         data = response.json()
         if data.get("status") == "OK" and data.get("data"):
             return data["data"]
     except Exception as e:
-        console.print(f"[red]Error fetching batch of {len(block_numbers)} blocks: {e}[/red]")
+        console.print(
+            f"[red]Error fetching batch of {len(block_numbers)} blocks: {e}[/red]"
+        )
     return []
 
 
@@ -186,11 +197,14 @@ async def upsert_batch(payloads: list[dict]) -> int:
         except OperationalError as e:
             if attempt < MAX_RETRIES - 1:
                 console.print(
-                    f"[yellow]DB connection error during upsert, retrying ({attempt + 1}/{MAX_RETRIES})...[/yellow]"
+                    "[yellow]DB connection error during upsert, retrying "
+                    f"({attempt + 1}/{MAX_RETRIES})...[/yellow]"
                 )
                 await asyncio.sleep(RETRY_DELAY)
             else:
-                console.print(f"[red]Failed to upsert after {MAX_RETRIES} attempts: {e}[/red]")
+                console.print(
+                    f"[red]Failed to upsert after {MAX_RETRIES} attempts: {e}[/red]"
+                )
                 return 0
 
     return 0
@@ -199,7 +213,9 @@ async def upsert_batch(payloads: list[dict]) -> int:
 async def main() -> None:
     """Main backfill function for candidate MEV vanilla blocks."""
     console.print("[bold blue]Beaconcha.in Candidate MEV Vanilla Backfill[/bold blue]")
-    console.print("Finding blocks with relay-using miners but missing from relays_payloads\n")
+    console.print(
+        "Finding blocks with relay-using miners but missing from relays_payloads\n"
+    )
 
     # Get candidate blocks
     candidate_blocks = await get_candidate_blocks()
@@ -262,7 +278,11 @@ async def main() -> None:
                 progress.update(
                     task_id,
                     completed=blocks_processed,
-                    description=f"Batch {batch_num}/{total_api_requests} | Block {last_block:,} (found: {inserted:,}, vanilla: {confirmed_vanilla:,}, err: {errors})",
+                    description=(
+                        f"Batch {batch_num}/{total_api_requests} |"
+                        f" Block {last_block:,} (found: {inserted:,},"
+                        f" vanilla: {confirmed_vanilla:,}, err: {errors})"
+                    ),
                 )
 
                 # Rate limiting between API requests

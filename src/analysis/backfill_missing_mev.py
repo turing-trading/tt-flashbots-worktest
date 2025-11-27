@@ -285,7 +285,8 @@ class BackfillMissingMEV(BackfillBase):
                 "[bold blue]Finding Misclassified Vanilla Blocks[/bold blue]"
             )
             self.console.print(
-                "[cyan]Looking for blocks marked as vanilla but with relay data...[/cyan]"
+                "[cyan]Looking for blocks marked as vanilla "
+                "but with relay data...[/cyan]"
             )
 
             blocks_to_process = await self._get_misclassified_vanilla_blocks(session)
@@ -304,7 +305,9 @@ class BackfillMissingMEV(BackfillBase):
                 f"\nFound [bold]{total_to_process:,}[/bold] misclassified blocks"
             )
             self.console.print(f"Block range: {min_block:,} to {max_block:,}")
-            self.console.print("[yellow]These will be reprocessed to fix MEV data[/yellow]\n")
+            self.console.print(
+                "[yellow]These will be reprocessed to fix MEV data[/yellow]\n"
+            )
 
             progress = create_standard_progress(console=self.console)
             total_processed = 0
